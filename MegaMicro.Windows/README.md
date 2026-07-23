@@ -19,6 +19,17 @@ dotnet build .\MegaMicro.Windows.sln -c Release
 dotnet run --project .\src\MegaMicro.Windows.App -c Release
 ```
 
+Create the distributable one-file Windows application with:
+
+```powershell
+dotnet publish .\src\MegaMicro.Windows.App\MegaMicro.Windows.App.csproj `
+  -c Release -r win-x64 --self-contained true `
+  -p:PublishSingleFile=true -o .\artifacts\single-file
+```
+
+The resulting `MegaMicro.exe` contains the interface, local agent service, hardware probe, and VIA
+protocol check. It does not require a separate DLL folder or a preinstalled .NET runtime.
+
 Run the dependency-free test harness with:
 
 ```powershell
