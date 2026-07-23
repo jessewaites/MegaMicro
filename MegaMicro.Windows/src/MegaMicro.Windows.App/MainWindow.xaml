@@ -1,0 +1,54 @@
+<Window x:Class="MegaMicro.Windows.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="MegaMicro for Windows" Width="920" Height="650" MinWidth="760" MinHeight="520"
+        Background="#0D1017" Foreground="#F3F5F7" FontFamily="Segoe UI">
+    <Grid Margin="28">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel>
+            <TextBlock Text="MEGAMICRO" Foreground="#62E6A7" FontWeight="Bold" FontSize="13" />
+            <TextBlock Text="Agent control, now on Windows." FontSize="30" FontWeight="SemiBold" Margin="0,4,0,6" />
+            <TextBlock Text="Local-only agent state and safe Creator Micro diagnostics." Foreground="#AAB2C0" FontSize="14" />
+        </StackPanel>
+
+        <Border Grid.Row="1" Background="{StaticResource PanelBrush}" CornerRadius="12" Margin="0,24,0,18" Padding="20">
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="Hardware" FontWeight="SemiBold" FontSize="17" />
+                    <TextBlock x:Name="HardwareStatus" Text="Not checked yet" Foreground="#AAB2C0" Margin="0,6,0,0" TextWrapping="Wrap" />
+                </StackPanel>
+                <Button Grid.Column="1" Content="Run read-only probe" Click="Probe_Click" VerticalAlignment="Center" />
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="2" Background="{StaticResource PanelBrush}" CornerRadius="12" Padding="20">
+            <Grid>
+                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                <DockPanel Margin="0,0,0,12">
+                    <Ellipse x:Name="ServiceDot" Width="9" Height="9" Fill="#62E6A7" Margin="0,0,8,0" />
+                    <TextBlock x:Name="ServiceStatus" Text="Local service starting…" FontWeight="SemiBold" FontSize="16" />
+                </DockPanel>
+                <ListView Grid.Row="1" x:Name="SessionsList" Background="Transparent" BorderThickness="0" Foreground="#F3F5F7">
+                    <ListView.View>
+                        <GridView>
+                            <GridViewColumn Header="Agent" Width="160" DisplayMemberBinding="{Binding Source}" />
+                            <GridViewColumn Header="State" Width="110" DisplayMemberBinding="{Binding State}" />
+                            <GridViewColumn Header="Project" Width="330" DisplayMemberBinding="{Binding Cwd}" />
+                            <GridViewColumn Header="Updated" Width="140" DisplayMemberBinding="{Binding UpdatedAt}" />
+                        </GridView>
+                    </ListView.View>
+                </ListView>
+            </Grid>
+        </Border>
+
+        <TextBlock Grid.Row="3" Margin="0,14,0,0" Foreground="#778191"
+                   Text="No firmware flashing. No exclusive device access. Service listens only on 127.0.0.1:48802." />
+    </Grid>
+</Window>

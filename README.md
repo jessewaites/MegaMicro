@@ -106,6 +106,11 @@ and application focusing; prompts and source code are not sent to the companion 
 
 ## Requirements
 
+> **Windows port:** An early Windows-native port now lives in
+> [`MegaMicro.Windows`](MegaMicro.Windows/README.md). It includes read-only Work Louder device
+> discovery, the local agent-state service, provider bridge, and a native status dashboard.
+> Hardware writes remain disabled until qualification on physical Creator Micro hardware.
+
 ### To run the app
 
 - A Mac running macOS 14 Sonoma or later

@@ -1,0 +1,17 @@
+<Application x:Class="MegaMicro.Windows.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             StartupUri="MainWindow.xaml">
+    <Application.Resources>
+        <SolidColorBrush x:Key="PanelBrush" Color="#171B24" />
+        <SolidColorBrush x:Key="AccentBrush" Color="#62E6A7" />
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="16,9" />
+            <Setter Property="Margin" Value="0,0,10,0" />
+            <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+            <Setter Property="Foreground" Value="#09130F" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+    </Application.Resources>
+</Application>
