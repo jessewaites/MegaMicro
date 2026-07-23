@@ -74,6 +74,44 @@ var tests = new List<(string Name, Func<Task> Run)>
         Check(response.IsSuccessStatusCode, "working alias accepted");
         Check(store.Snapshot().Single().State == AgentState.Coding, "working normalized to coding");
     }),
+    ("default keymap", () =>
+    {
+        var configuration = BindingConfiguration.CreateDefault();
+        Check(configuration.Profiles.Count == 1, "one starter profile");
+        Check(configuration.ActiveProfile.Layers.Count == 3, "three layers");
+        Check(configuration.ActiveProfile.Layers.All(x => x.Bindings.Count == 16), "sixteen keys per layer");
+        Check(configuration.ActiveProfile.Layers[0].Bindings.Select(x => x.Position).SequenceEqual(Enumerable.Range(1, 16)),
+            "physical positions are stable");
+        Check(configuration.ActiveProfile.Layers[0].Bindings[0].Trigger.DisplayName == "F13", "first default trigger");
+        Check(configuration.ActiveProfile.Layers[0].Bindings[15].Trigger.DisplayName == "Ctrl + Alt + Shift + F16",
+            "extended default trigger");
+        return Task.CompletedTask;
+    }),
+    ("keymap persistence", () =>
+    {
+        var directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"MegaMicro-tests-{Guid.NewGuid():N}");
+        var path = System.IO.Path.Combine(directory, "bindings.json");
+        try
+        {
+            var store = new BindingConfigStore(path);
+            var configuration = BindingConfiguration.CreateDefault();
+            var binding = configuration.ActiveProfile.Layers[0].Bindings[0];
+            binding.Label = "Open Codex";
+            binding.Action = BindingActionKind.FocusCodexThenShortcut;
+            binding.Output = new KeyboardGestureSpec { VirtualKey = 0x4E, Control = true };
+            store.Save(configuration);
+            var loaded = store.Load().ActiveProfile.Layers[0].Bindings[0];
+            Check(loaded.Label == "Open Codex", "label persisted");
+            Check(loaded.Action == BindingActionKind.FocusCodexThenShortcut, "action persisted");
+            Check(loaded.Output.DisplayName == "Ctrl + N", "shortcut persisted");
+            Check(!File.ReadAllText(path).Contains("DisplayName", StringComparison.Ordinal), "computed labels omitted from JSON");
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, true);
+        }
+        return Task.CompletedTask;
+    }),
 };
 
 var failures = 0;
