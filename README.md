@@ -44,6 +44,8 @@ Companion apps bring the live dashboard to iPhone, iPad, and Apple Watch.
   local network, with QR-code pairing and Bonjour discovery.
 - Relays fleet status to Apple Watch, including a watch-face complication for quick access.
 - Supports simulated agents through Demo Mode for evaluation and video recording.
+- Safely prepares an editable Work Louder Input layer by cloning the live protected Codex
+  layout, with strict object discovery, backups, atomic replacement, and read-back validation.
 - Keeps all telemetry local to the Mac.
 
 <!-- Screenshot placeholder: Assets/screenshots/activity-feed.png -->
@@ -286,6 +288,66 @@ starting real coding agents. All simulated events are labeled **DEMO**.
 Profiles control actions, state colors, effects, and application-specific behavior. MegaMicro
 can switch profiles based on the foreground application. Use the Keyboard and States & Colors
 screens to customize the experience.
+
+### Hardware layers
+
+Hardware layers and MegaMicro profiles are separate:
+
+- A **hardware layer** controls which events the Codex Micro firmware emits.
+- A **MegaMicro profile** controls what this Mac does when it receives those events.
+
+The bottom-left round button changes the keyboard layer in the stock firmware. MegaMicro also
+maps that control to profile cycling when its semantic event reaches the app; automatic
+layer-to-profile synchronization is not currently assumed.
+
+The **Manage Layers** screen provides an assisted, version-sensitive workflow for copying the
+live protected Codex layout into an editable layer. This preserves the six private Agent
+events and live task-status LEDs, Codex commands, push-to-talk, dial behavior, and native
+joystick behavior before individual positions are customized in Work Louder Input.
+
+The workflow intentionally has narrow boundaries:
+
+1. Open Work Louder Input with the Codex Micro connected and wait for it to finish retrieving
+   the device configuration.
+2. Fully quit Input using **input → Quit input**. Closing its window is not sufficient.
+3. In MegaMicro, open **Manage Layers**, release the keyboard connection, and inspect the live
+   configuration.
+4. Confirm the displayed device, active profile, protected source layer, and editable target.
+5. Clone the Codex layout. MegaMicro creates a full database backup and a separate backup of
+   the target's original `layout`, then changes only that target `layout` using an atomic,
+   permission-preserving replacement.
+6. Open Input, select the target, temporarily append ` sync` to its name, and wait for
+   `layout updated`. Restore the original name and wait for `layout updated` again.
+7. Fully quit Input, reopen it once so it reads the device back, fully quit it again, and use
+   **Verify Read-Back** in MegaMicro.
+
+MegaMicro never modifies protected Layer 1 and does not write layer data directly to firmware.
+It reads the live file at:
+
+```text
+~/Library/Application Support/input/input_storage.json
+```
+
+It refuses to proceed if the devices collection, Codex Micro, active profile, source layer, or
+target cannot be identified safely. It does not install another user's database or fall back to
+a hardcoded keymap. Work Louder Input still performs the actual device synchronization.
+
+Backups are stored in:
+
+```text
+~/Library/Application Support/input/MegaMicro Layer Backups/
+```
+
+For rollback, first let Input synchronize the current device state and fully quit it. Use
+**Restore Original Layer Layout** in the same Manage Layers session, then repeat the temporary
+name change and read-back steps. Rollback restores only the target `layout`; it deliberately
+preserves current database metadata and hardware checksums. A fresh full database backup is
+also created immediately before rollback.
+
+This integration is unsupported by Work Louder and may break when Input, its storage schema,
+the Codex Micro firmware, or private `KV_OAI_*` keycodes change. It was designed from the
+workflow verified with Input 0.17.2 and Codex Micro firmware 0.4.1, but always inspects the live
+configuration instead of assuming those versions.
 
 ## Local webhook
 

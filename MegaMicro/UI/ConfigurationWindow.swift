@@ -5,6 +5,7 @@ enum ConfigSection: String, CaseIterable, Identifiable {
     case agents = "Manage Agents"
     case fleet = "Manage Fleet"
     case keyboard = "Keyboard"
+    case layers = "Manage Layers"
     case profiles = "Profiles"
     case states = "States & Colors"
     case snippets = "Prompt Snippets"
@@ -21,7 +22,8 @@ enum ConfigSection: String, CaseIterable, Identifiable {
         case .fleet: "sailboat"   // fallback; sidebar prefers assets/fleet.svg
         case .dashboard: "gauge.with.dots.needle.50percent"
         case .keyboard: "keyboard"
-        case .profiles: "square.on.square"
+        case .layers: "square.on.square"
+        case .profiles: "slider.horizontal.3"
         case .states: "paintpalette"
         case .snippets: "text.quote"
         case .hooks: "link"
@@ -63,6 +65,7 @@ struct ConfigurationWindow: View {
             case .fleet: FleetPane()
             case .dashboard: DashboardPane()
             case .keyboard: KeyboardPane()
+            case .layers: LayersPane()
             case .profiles: ProfileListView()
             case .states: StatesPane()
             case .snippets: PromptSnippetsPane()
