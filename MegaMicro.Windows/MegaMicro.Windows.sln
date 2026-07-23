@@ -7,8 +7,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MegaMicro.Windows.Core", "s
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MegaMicro.Windows.App", "src\MegaMicro.Windows.App\MegaMicro.Windows.App.csproj", "{CB71AE9B-F5DD-4734-AF9D-A78F4743574B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MegaMicro.Windows.Bridge", "src\MegaMicro.Windows.Bridge\MegaMicro.Windows.Bridge.csproj", "{D3D8B27B-7EF0-48D6-B684-F90F7F2F73D3}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MegaMicro.Windows.Tests", "tests\MegaMicro.Windows.Tests\MegaMicro.Windows.Tests.csproj", "{A488130A-EA04-45AE-8A66-6D53A59C677B}"
 EndProject
 Global
@@ -25,10 +23,6 @@ Global
 		{CB71AE9B-F5DD-4734-AF9D-A78F4743574B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{CB71AE9B-F5DD-4734-AF9D-A78F4743574B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{CB71AE9B-F5DD-4734-AF9D-A78F4743574B}.Release|Any CPU.Build.0 = Release|Any CPU
-		{D3D8B27B-7EF0-48D6-B684-F90F7F2F73D3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{D3D8B27B-7EF0-48D6-B684-F90F7F2F73D3}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{D3D8B27B-7EF0-48D6-B684-F90F7F2F73D3}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{D3D8B27B-7EF0-48D6-B684-F90F7F2F73D3}.Release|Any CPU.Build.0 = Release|Any CPU
 		{A488130A-EA04-45AE-8A66-6D53A59C677B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{A488130A-EA04-45AE-8A66-6D53A59C677B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A488130A-EA04-45AE-8A66-6D53A59C677B}.Release|Any CPU.ActiveCfg = Release|Any CPU

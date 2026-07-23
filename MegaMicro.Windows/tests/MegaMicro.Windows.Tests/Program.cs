@@ -21,13 +21,6 @@ var tests = new List<(string Name, Func<Task> Run)>
         Check(store.Snapshot().Count == 1 && store.Snapshot()[0].State == AgentState.Coding, "session updated");
         return Task.CompletedTask;
     }),
-    ("bridge normalization", () =>
-    {
-        using var doc = JsonDocument.Parse("{\"session_id\":\"abc\",\"cwd\":\"C:\\\\repo\"}");
-        var report = BridgeNormalizer.Normalize(doc.RootElement, "codex", "PreToolUse");
-        Check(report.State == "coding" && report.Session == "abc", "pre-tool coding state");
-        return Task.CompletedTask;
-    }),
     ("VIA report framing", () =>
     {
         var request = ViaProtocol.CreateProtocolVersionRequest(33);

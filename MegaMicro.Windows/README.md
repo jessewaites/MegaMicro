@@ -5,7 +5,6 @@ This is the Windows-native port of MegaMicro. It currently provides:
 - read-only discovery for Creator Micro v1, Creator Micro 2, and Codex Micro;
 - an opt-in VIA protocol-version handshake that changes no device settings;
 - a loopback-only agent-state API at `http://127.0.0.1:48802`;
-- a fail-open provider hook bridge;
 - a native WPF status dashboard;
 - no firmware flashing and no exclusive HID access.
 
