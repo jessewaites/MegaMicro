@@ -105,11 +105,15 @@ var tests = new List<(string Name, Func<Task> Run)>
             binding.Label = "Open Codex";
             binding.Action = BindingActionKind.FocusCodexThenShortcut;
             binding.Output = new KeyboardGestureSpec { VirtualKey = 0x4E, Control = true };
+            binding.CodexInstruction = "Review this project";
+            binding.WorkingDirectory = "C:\\repo";
             store.Save(configuration);
             var loaded = store.Load().ActiveProfile.Layers[0].Bindings[0];
             Check(loaded.Label == "Open Codex", "label persisted");
             Check(loaded.Action == BindingActionKind.FocusCodexThenShortcut, "action persisted");
             Check(loaded.Output.DisplayName == "Ctrl + N", "shortcut persisted");
+            Check(loaded.CodexInstruction == "Review this project", "direct Codex instruction persisted");
+            Check(loaded.WorkingDirectory == "C:\\repo", "direct Codex working directory persisted");
             Check(!File.ReadAllText(path).Contains("DisplayName", StringComparison.Ordinal), "computed labels omitted from JSON");
         }
         finally
@@ -145,6 +149,16 @@ var tests = new List<(string Name, Func<Task> Run)>
         return Task.CompletedTask;
     }),
 };
+
+if (Environment.GetEnvironmentVariable("MEGAMICRO_CODEX_SMOKE") == "1")
+{
+    tests.Add(("Codex app-server handshake", async () =>
+    {
+        await using var client = new CodexAppServerClient();
+        await client.EnsureStartedAsync();
+        Check(client.IsReady, "direct Codex client initialized");
+    }));
+}
 
 var failures = 0;
 foreach (var test in tests)

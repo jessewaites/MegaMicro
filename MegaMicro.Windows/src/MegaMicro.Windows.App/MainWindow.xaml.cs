@@ -1,8 +1,10 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using Microsoft.Win32;
 using MegaMicro.Windows.Core;
 
 namespace MegaMicro.Windows.App;
@@ -14,6 +16,7 @@ public partial class MainWindow : Window
 
     private readonly BindingConfigStore configStore = new();
     private readonly KeyboardHookService keyboardHook = new();
+    private readonly CodexAppServerClient codexClient = new();
     private readonly Dictionary<int, Button> keyButtons = [];
     private BindingConfiguration configuration;
     private ControlBinding? selectedBinding;
@@ -25,6 +28,7 @@ public partial class MainWindow : Window
         new(BindingActionKind.FocusCodex, "Focus Codex"),
         new(BindingActionKind.SendShortcut, "Send shortcut"),
         new(BindingActionKind.FocusCodexThenShortcut, "Focus Codex, then send shortcut"),
+        new(BindingActionKind.StartCodexTask, "Start Codex task directly"),
     ];
 
     public MainWindow()
@@ -36,12 +40,13 @@ public partial class MainWindow : Window
         LoadProfiles();
         Loaded += OnLoaded;
         Closed += OnClosed;
+        codexClient.StatusChanged += CodexClient_StatusChanged;
     }
 
     private BindingProfile ActiveProfile => configuration.ActiveProfile;
     private BindingLayer ActiveLayer => ActiveProfile.Layers.First(x => x.Number == ActiveProfile.ActiveLayer);
 
-    private void OnLoaded(object sender, RoutedEventArgs e)
+    private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         try
         {
@@ -56,9 +61,24 @@ public partial class MainWindow : Window
         }
         RunProbe();
         SelectBinding(ActiveLayer.Bindings[0]);
+        try
+        {
+            await codexClient.EnsureStartedAsync();
+            CodexConnectionStatus.Text = "Direct Codex: ready";
+            CodexConnectionStatus.Foreground = new SolidColorBrush(Color.FromRgb(0x63, 0xE6, 0xA8));
+        }
+        catch (Exception ex)
+        {
+            CodexConnectionStatus.Text = $"Direct Codex unavailable: {ex.Message}";
+            CodexConnectionStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x72, 0x5E));
+        }
     }
 
-    private void OnClosed(object? sender, EventArgs e) => keyboardHook.Dispose();
+    private async void OnClosed(object? sender, EventArgs e)
+    {
+        keyboardHook.Dispose();
+        await codexClient.DisposeAsync();
+    }
 
     private void BuildDeviceLayout()
     {
@@ -196,6 +216,8 @@ public partial class MainWindow : Window
         TriggerText.Text = binding.Trigger.DisplayName;
         ActionCombo.SelectedItem = actionOptions.First(x => x.Kind == binding.Action);
         OutputText.Text = binding.Output.DisplayName;
+        CodexInstructionText.Text = binding.CodexInstruction;
+        WorkingDirectoryText.Text = binding.WorkingDirectory;
         loadingEditor = false;
         RefreshLayer();
         UpdateActionHelp();
@@ -254,11 +276,7 @@ public partial class MainWindow : Window
         }
         var binding = ActiveLayer.Bindings.FirstOrDefault(x => x.Trigger == gesture && x.Action != BindingActionKind.None);
         if (binding is null) return false;
-        _ = Task.Run(() =>
-        {
-            var worked = BindingExecutor.Execute(binding);
-            Dispatcher.Invoke(() => FooterStatus.Text = worked ? $"Ran: {binding.Label}" : $"Could not run: {binding.Label}");
-        });
+        _ = ExecuteBindingAsync(binding);
         return true;
     }
 
@@ -323,11 +341,17 @@ public partial class MainWindow : Window
     private void UpdateActionHelp()
     {
         var kind = ActionCombo.SelectedItem is ActionOption option ? option.Kind : BindingActionKind.None;
+        CodexFieldsPanel.Visibility = kind == BindingActionKind.StartCodexTask ? Visibility.Visible : Visibility.Collapsed;
+        ShortcutFieldsPanel.Visibility = kind is BindingActionKind.SendShortcut or BindingActionKind.FocusCodexThenShortcut
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        RunActionButton.Content = kind == BindingActionKind.StartCodexTask ? "Run Codex task" : "Test action";
         EditorHelp.Text = kind switch
         {
             BindingActionKind.FocusCodex => "Brings the running Codex window to the foreground.",
             BindingActionKind.SendShortcut => "Sends the recorded shortcut to whichever app is currently focused.",
             BindingActionKind.FocusCodexThenShortcut => "Focuses Codex, waits briefly, then sends the recorded shortcut.",
+            BindingActionKind.StartCodexTask => "Starts a real Codex thread and turn in the selected project through the local Codex app-server.",
             _ => "This key is disabled until an action is selected.",
         };
     }
@@ -337,6 +361,8 @@ public partial class MainWindow : Window
         if (selectedBinding is null) return;
         selectedBinding.Label = string.IsNullOrWhiteSpace(LabelText.Text) ? $"Key {selectedBinding.Position}" : LabelText.Text.Trim();
         if (ActionCombo.SelectedItem is ActionOption option) selectedBinding.Action = option.Kind;
+        selectedBinding.CodexInstruction = CodexInstructionText.Text.Trim();
+        selectedBinding.WorkingDirectory = WorkingDirectoryText.Text.Trim();
         if (selectedBinding.Trigger.IsEmpty)
         {
             EditorStatus.Text = "Learn a physical key before saving this binding.";
@@ -346,6 +372,19 @@ public partial class MainWindow : Window
         {
             EditorStatus.Text = "Record an output shortcut for the selected action.";
             return;
+        }
+        if (selectedBinding.Action == BindingActionKind.StartCodexTask)
+        {
+            if (string.IsNullOrWhiteSpace(selectedBinding.CodexInstruction))
+            {
+                EditorStatus.Text = "Enter the instruction Codex should run.";
+                return;
+            }
+            if (!Directory.Exists(selectedBinding.WorkingDirectory))
+            {
+                EditorStatus.Text = "Choose an existing project folder for this Codex task.";
+                return;
+            }
         }
         var duplicate = ActiveLayer.Bindings.FirstOrDefault(x => x.Position != selectedBinding.Position && x.Trigger == selectedBinding.Trigger);
         if (duplicate is not null)
@@ -357,11 +396,66 @@ public partial class MainWindow : Window
         RefreshLayer();
     }
 
-    private void TestAction_Click(object sender, RoutedEventArgs e)
+    private async void TestAction_Click(object sender, RoutedEventArgs e)
     {
         if (selectedBinding is null) return;
-        var worked = BindingExecutor.Execute(selectedBinding);
-        EditorStatus.Text = worked ? "Action sent." : "Action is incomplete or Codex is not running.";
+        selectedBinding.Label = string.IsNullOrWhiteSpace(LabelText.Text) ? selectedBinding.ControlName : LabelText.Text.Trim();
+        if (ActionCombo.SelectedItem is ActionOption option) selectedBinding.Action = option.Kind;
+        selectedBinding.CodexInstruction = CodexInstructionText.Text.Trim();
+        selectedBinding.WorkingDirectory = WorkingDirectoryText.Text.Trim();
+        await ExecuteBindingAsync(selectedBinding);
+    }
+
+    private async Task ExecuteBindingAsync(ControlBinding binding)
+    {
+        try
+        {
+            if (binding.Action == BindingActionKind.StartCodexTask)
+            {
+                Dispatcher.Invoke(() => FooterStatus.Text = $"Starting Codex: {binding.Label}");
+                var task = await codexClient.StartTaskAsync(binding.CodexInstruction, binding.WorkingDirectory);
+                Dispatcher.Invoke(() =>
+                {
+                    FooterStatus.Text = $"Codex task started: {binding.Label}";
+                    EditorStatus.Text = $"Started thread {task.ThreadId}.";
+                });
+                return;
+            }
+
+            var worked = await Task.Run(() => BindingExecutor.Execute(binding));
+            Dispatcher.Invoke(() =>
+            {
+                FooterStatus.Text = worked ? $"Ran: {binding.Label}" : $"Could not run: {binding.Label}";
+                EditorStatus.Text = worked ? "Action sent." : "Action is incomplete or Codex is not running.";
+            });
+        }
+        catch (Exception ex)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                FooterStatus.Text = $"Codex action failed: {binding.Label}";
+                EditorStatus.Text = ex.Message;
+            });
+        }
+    }
+
+    private void BrowseWorkingDirectory_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFolderDialog
+        {
+            Title = "Choose the project Codex should work in",
+            InitialDirectory = Directory.Exists(WorkingDirectoryText.Text) ? WorkingDirectoryText.Text : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+        };
+        if (dialog.ShowDialog(this) == true) WorkingDirectoryText.Text = dialog.FolderName;
+    }
+
+    private void CodexClient_StatusChanged(object? sender, CodexStatusEvent e)
+    {
+        Dispatcher.BeginInvoke(() =>
+        {
+            CodexConnectionStatus.Text = e.Message;
+            FooterStatus.Text = e.Message;
+        });
     }
 
     private void SaveConfiguration(string message)

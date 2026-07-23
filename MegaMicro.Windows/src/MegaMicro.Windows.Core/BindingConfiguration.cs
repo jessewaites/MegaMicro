@@ -9,6 +9,7 @@ public enum BindingActionKind
     FocusCodex,
     SendShortcut,
     FocusCodexThenShortcut,
+    StartCodexTask,
 }
 
 public enum CreatorControlKind
@@ -106,6 +107,8 @@ public sealed class ControlBinding
     public KeyboardGestureSpec Trigger { get; set; } = new();
     public BindingActionKind Action { get; set; }
     public KeyboardGestureSpec Output { get; set; } = new();
+    public string CodexInstruction { get; set; } = "";
+    public string WorkingDirectory { get; set; } = "";
 }
 
 public sealed class BindingLayer

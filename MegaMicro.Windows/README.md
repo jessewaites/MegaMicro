@@ -10,6 +10,7 @@ It includes:
 - 12 mechanical keys, four specialty presses, and four roller/dial directions;
 - three editable layers and persistent profiles;
 - one-click physical-key learning through a Windows global keyboard listener;
+- direct Codex thread and turn creation through the local Codex app-server;
 - actions to focus Codex, send a shortcut, or focus Codex and then send a shortcut;
 - read-only Creator Micro v1, Creator Micro 2, and Codex Micro discovery;
 - one self-contained `MegaMicro.exe` with no separate service or required .NET installation;
@@ -22,6 +23,7 @@ It includes:
 3. Click **Learn physical key**, then operate that control on the Creator Micro.
 4. Choose what it should do. For a shortcut action, click **Record output shortcut** and press the
    desired shortcut on a normal keyboard.
+   For **Start Codex task directly**, enter the Codex instruction and choose the project folder.
 5. Click **Save binding**. The mapping works while Creator Command Center is running, including when
    minimized.
 
@@ -53,6 +55,12 @@ dotnet run --project .\tests\MegaMicro.Windows.Tests -c Release
 
 Hardware interaction remains read-only. Bindings translate the keyboard signals already produced by
 the Creator Micro, so the app does not rewrite or flash the device.
+
+Direct Codex actions start the locally installed `codex app-server` over private stdio JSON-RPC and
+reuse the user's existing Codex sign-in. They create real Codex threads with a `workspace-write`
+sandbox and `never` approval policy, so a hardware action cannot silently escalate beyond the
+selected project workspace. Keyboard shortcuts remain available only as an optional compatibility
+action.
 
 ## Send an agent-state event
 
