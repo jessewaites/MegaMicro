@@ -1,5 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Media;
 using MegaMicro.Windows.Core;
 
@@ -8,21 +10,29 @@ namespace MegaMicro.Windows.App;
 public partial class MainWindow : Window
 {
     private enum CaptureTarget { None, Trigger, Output }
+    private sealed record ActionOption(BindingActionKind Kind, string Label);
 
     private readonly BindingConfigStore configStore = new();
     private readonly KeyboardHookService keyboardHook = new();
-    private readonly List<Button> keyButtons = [];
+    private readonly Dictionary<int, Button> keyButtons = [];
     private BindingConfiguration configuration;
     private ControlBinding? selectedBinding;
     private CaptureTarget captureTarget;
     private bool loadingEditor;
+    private readonly ActionOption[] actionOptions =
+    [
+        new(BindingActionKind.None, "Disabled"),
+        new(BindingActionKind.FocusCodex, "Focus Codex"),
+        new(BindingActionKind.SendShortcut, "Send shortcut"),
+        new(BindingActionKind.FocusCodexThenShortcut, "Focus Codex, then send shortcut"),
+    ];
 
     public MainWindow()
     {
         InitializeComponent();
         configuration = configStore.Load();
-        ActionCombo.ItemsSource = Enum.GetValues<BindingActionKind>();
-        BuildKeyGrid();
+        ActionCombo.ItemsSource = actionOptions;
+        BuildDeviceLayout();
         LoadProfiles();
         Loaded += OnLoaded;
         Closed += OnClosed;
@@ -50,25 +60,83 @@ public partial class MainWindow : Window
 
     private void OnClosed(object? sender, EventArgs e) => keyboardHook.Dispose();
 
-    private void BuildKeyGrid()
+    private void BuildDeviceLayout()
     {
-        KeyGrid.Children.Clear();
+        DeviceGrid.Children.Clear();
         keyButtons.Clear();
-        for (var index = 0; index < 16; index++)
+
+        AddEncoderCell(0, 0, 1, 17, 18);
+        AddControlButton(2, 0, 1);
+        AddControlButton(3, 0, 2);
+        AddEncoderCell(0, 3, 4, 19, 20);
+
+        for (var column = 0; column < 4; column++)
         {
-            var button = new Button
-            {
-                Tag = index,
-                Margin = new Thickness(5),
-                Background = new SolidColorBrush(Color.FromRgb(0x25, 0x2B, 0x36)),
-                Foreground = Brushes.White,
-                BorderBrush = new SolidColorBrush(Color.FromRgb(0x3A, 0x43, 0x51)),
-                BorderThickness = new Thickness(1),
-            };
-            button.Click += KeyButton_Click;
-            keyButtons.Add(button);
-            KeyGrid.Children.Add(button);
+            AddControlButton(5 + column, 1, column);
+            AddControlButton(9 + column, 2, column);
+            AddControlButton(13 + column, 3, column);
         }
+    }
+
+    private void AddEncoderCell(int row, int column, int pressPosition, int counterClockwisePosition, int clockwisePosition)
+    {
+        var cell = new Grid { Margin = new Thickness(5) };
+        cell.RowDefinitions.Add(new RowDefinition());
+        cell.RowDefinitions.Add(new RowDefinition { Height = new GridLength(27) });
+        Grid.SetRow(cell, row);
+        Grid.SetColumn(cell, column);
+        DeviceGrid.Children.Add(cell);
+
+        var press = CreateControlButton(pressPosition, new Thickness(0, 0, 0, 4));
+        Grid.SetRow(press, 0);
+        cell.Children.Add(press);
+
+        var directions = new UniformGrid { Columns = 2 };
+        Grid.SetRow(directions, 1);
+        directions.Children.Add(CreateControlButton(counterClockwisePosition, new Thickness(0, 0, 2, 0)));
+        directions.Children.Add(CreateControlButton(clockwisePosition, new Thickness(2, 0, 0, 0)));
+        cell.Children.Add(directions);
+    }
+
+    private void AddControlButton(int position, int row, int column)
+    {
+        var button = CreateControlButton(position, new Thickness(5));
+        Grid.SetRow(button, row);
+        Grid.SetColumn(button, column);
+        DeviceGrid.Children.Add(button);
+    }
+
+    private Button CreateControlButton(int position, Thickness margin)
+    {
+        var descriptor = CreatorMicroV1Layout.Controls[position - 1];
+        var round = descriptor.Kind is CreatorControlKind.DialPress or CreatorControlKind.SpecialButton;
+        var button = new Button
+        {
+            Tag = position,
+            Margin = margin,
+            Background = new SolidColorBrush(Color.FromRgb(0x25, 0x2B, 0x36)),
+            Foreground = Brushes.White,
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0x3A, 0x43, 0x51)),
+            BorderThickness = new Thickness(1),
+            Style = (Style)FindResource(round ? "RoundKeyButtonStyle" : "KeyButtonStyle"),
+        };
+        if (round)
+        {
+            button.Width = descriptor.Kind == CreatorControlKind.DialPress ? 78 : 76;
+            button.Height = descriptor.Kind == CreatorControlKind.DialPress ? 78 : 76;
+            button.HorizontalAlignment = HorizontalAlignment.Center;
+            button.VerticalAlignment = VerticalAlignment.Center;
+        }
+        else if (descriptor.Kind == CreatorControlKind.RollerPress)
+        {
+            button.Width = 82;
+            button.Height = 68;
+            button.HorizontalAlignment = HorizontalAlignment.Center;
+            button.VerticalAlignment = VerticalAlignment.Center;
+        }
+        button.Click += KeyButton_Click;
+        keyButtons[position] = button;
+        return button;
     }
 
     private void LoadProfiles()
@@ -84,11 +152,29 @@ public partial class MainWindow : Window
         LayerTitle.Text = $"Layer {ActiveLayer.Number} · {ActiveLayer.Name}";
         foreach (var binding in ActiveLayer.Bindings)
         {
+            var compact = binding.Kind is CreatorControlKind.RollerTurn or CreatorControlKind.DialTurn;
             var label = new StackPanel();
-            label.Children.Add(new TextBlock { Text = binding.Label, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, FontWeight = FontWeights.SemiBold });
-            label.Children.Add(new TextBlock { Text = binding.Trigger.DisplayName, Foreground = new SolidColorBrush(Color.FromRgb(0x9B, 0xA6, 0xB5)), FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 5, 0, 0) });
-            keyButtons[binding.Position - 1].Content = label;
-            keyButtons[binding.Position - 1].BorderBrush = selectedBinding?.Position == binding.Position
+            label.Children.Add(new TextBlock
+            {
+                Text = compact ? DirectionGlyph(binding.Position) : binding.Label,
+                TextWrapping = TextWrapping.Wrap,
+                TextAlignment = TextAlignment.Center,
+                FontWeight = FontWeights.SemiBold,
+                FontSize = compact ? 13 : binding.Label.Length > 11 ? 10 : 12,
+            });
+            if (!compact) label.Children.Add(new TextBlock
+            {
+                Text = FormatKeyTrigger(binding.Trigger),
+                Foreground = new SolidColorBrush(Color.FromRgb(0x9B, 0xA6, 0xB5)),
+                FontSize = 10,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                TextAlignment = TextAlignment.Center,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 5, 0, 0),
+            });
+            keyButtons[binding.Position].Content = label;
+            keyButtons[binding.Position].ToolTip = $"{binding.ControlName}: {binding.Label} · {binding.Trigger.DisplayName}";
+            keyButtons[binding.Position].BorderBrush = selectedBinding?.Position == binding.Position
                 ? new SolidColorBrush(Color.FromRgb(0x63, 0xE6, 0xA8))
                 : new SolidColorBrush(Color.FromRgb(0x3A, 0x43, 0x51));
         }
@@ -102,12 +188,13 @@ public partial class MainWindow : Window
 
     private void SelectBinding(ControlBinding binding)
     {
+        CancelCapture();
         selectedBinding = binding;
         loadingEditor = true;
-        SelectedTitle.Text = $"Key {binding.Position}";
+        SelectedTitle.Text = binding.ControlName;
         LabelText.Text = binding.Label;
         TriggerText.Text = binding.Trigger.DisplayName;
-        ActionCombo.SelectedItem = binding.Action;
+        ActionCombo.SelectedItem = actionOptions.First(x => x.Kind == binding.Action);
         OutputText.Text = binding.Output.DisplayName;
         loadingEditor = false;
         RefreshLayer();
@@ -116,7 +203,7 @@ public partial class MainWindow : Window
 
     private void KeyButton_Click(object sender, RoutedEventArgs e)
     {
-        var position = (int)((Button)sender).Tag + 1;
+        var position = (int)((Button)sender).Tag;
         SelectBinding(ActiveLayer.Bindings.First(x => x.Position == position));
     }
 
@@ -136,6 +223,11 @@ public partial class MainWindow : Window
 
     private void LearnTrigger_Click(object sender, RoutedEventArgs e)
     {
+        if (captureTarget == CaptureTarget.Trigger)
+        {
+            CancelCapture("Physical-key capture cancelled.");
+            return;
+        }
         captureTarget = CaptureTarget.Trigger;
         LearnTriggerButton.Content = "Press the Creator Micro key now…";
         EditorStatus.Text = "Waiting for the next physical key or shortcut.";
@@ -143,6 +235,11 @@ public partial class MainWindow : Window
 
     private void RecordOutput_Click(object sender, RoutedEventArgs e)
     {
+        if (captureTarget == CaptureTarget.Output)
+        {
+            CancelCapture("Shortcut capture cancelled.");
+            return;
+        }
         captureTarget = CaptureTarget.Output;
         RecordOutputButton.Content = "Press the desired Codex shortcut…";
         EditorStatus.Text = "Waiting for the output shortcut.";
@@ -185,16 +282,47 @@ public partial class MainWindow : Window
         RefreshLayer();
     }
 
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape || captureTarget == CaptureTarget.None) return;
+        CancelCapture("Capture cancelled.");
+        e.Handled = true;
+    }
+
+    private void CancelCapture(string? message = null)
+    {
+        if (captureTarget == CaptureTarget.None) return;
+        captureTarget = CaptureTarget.None;
+        LearnTriggerButton.Content = "Learn physical key";
+        RecordOutputButton.Content = "Record output shortcut";
+        if (message is not null) EditorStatus.Text = message;
+    }
+
+    private static string FormatKeyTrigger(KeyboardGestureSpec trigger)
+    {
+        const string longPrefix = "Ctrl + Alt + Shift + ";
+        return trigger.DisplayName.StartsWith(longPrefix, StringComparison.Ordinal)
+            ? $"Ctrl · Alt · Shift\n{trigger.DisplayName[longPrefix.Length..]}"
+            : trigger.DisplayName;
+    }
+
+    private static string DirectionGlyph(int position) => position switch
+    {
+        17 or 19 => "↶",
+        18 or 20 => "↷",
+        _ => "•",
+    };
+
     private void ActionCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!loadingEditor && selectedBinding is not null && ActionCombo.SelectedItem is BindingActionKind kind)
-            selectedBinding.Action = kind;
+        if (!loadingEditor && selectedBinding is not null && ActionCombo.SelectedItem is ActionOption option)
+            selectedBinding.Action = option.Kind;
         UpdateActionHelp();
     }
 
     private void UpdateActionHelp()
     {
-        var kind = ActionCombo.SelectedItem is BindingActionKind selected ? selected : BindingActionKind.None;
+        var kind = ActionCombo.SelectedItem is ActionOption option ? option.Kind : BindingActionKind.None;
         EditorHelp.Text = kind switch
         {
             BindingActionKind.FocusCodex => "Brings the running Codex window to the foreground.",
@@ -208,7 +336,23 @@ public partial class MainWindow : Window
     {
         if (selectedBinding is null) return;
         selectedBinding.Label = string.IsNullOrWhiteSpace(LabelText.Text) ? $"Key {selectedBinding.Position}" : LabelText.Text.Trim();
-        if (ActionCombo.SelectedItem is BindingActionKind action) selectedBinding.Action = action;
+        if (ActionCombo.SelectedItem is ActionOption option) selectedBinding.Action = option.Kind;
+        if (selectedBinding.Trigger.IsEmpty)
+        {
+            EditorStatus.Text = "Learn a physical key before saving this binding.";
+            return;
+        }
+        if (selectedBinding.Action is BindingActionKind.SendShortcut or BindingActionKind.FocusCodexThenShortcut && selectedBinding.Output.IsEmpty)
+        {
+            EditorStatus.Text = "Record an output shortcut for the selected action.";
+            return;
+        }
+        var duplicate = ActiveLayer.Bindings.FirstOrDefault(x => x.Position != selectedBinding.Position && x.Trigger == selectedBinding.Trigger);
+        if (duplicate is not null)
+        {
+            EditorStatus.Text = $"{selectedBinding.Trigger.DisplayName} is already assigned to Key {duplicate.Position}. Learn a different physical key.";
+            return;
+        }
         SaveConfiguration("Binding saved");
         RefreshLayer();
     }

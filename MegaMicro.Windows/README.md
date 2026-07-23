@@ -1,12 +1,13 @@
 # Creator Command Center for Windows
 
-This is a Windows-native Creator Micro key-mapping app for Codex. The single desktop interface lets
-you select any of the 16 physical keys, learn what that key currently sends, and bind it to a Codex
-action or keyboard shortcut.
+This is a Windows-native Creator Micro v1 key-mapping app for Codex. The interface follows the
+original hardware geometry and lets you bind every press and encoder direction to a Codex action or
+keyboard shortcut.
 
 It includes:
 
-- a visual 4x4 Creator Micro keymap;
+- an accurate Creator Micro v1 device twin based on the official QMK geometry;
+- 12 mechanical keys, four specialty presses, and four roller/dial directions;
 - three editable layers and persistent profiles;
 - one-click physical-key learning through a Windows global keyboard listener;
 - actions to focus Codex, send a shortcut, or focus Codex and then send a shortcut;
@@ -17,8 +18,8 @@ It includes:
 ## Use it
 
 1. Connect the Creator Micro and open `MegaMicro.exe`.
-2. Click a key in the on-screen 4x4 layout.
-3. Click **Learn physical key**, then press that key on the Creator Micro.
+2. Select a key, specialty button, roller/dial press, or rotation direction on screen.
+3. Click **Learn physical key**, then operate that control on the Creator Micro.
 4. Choose what it should do. For a shortcut action, click **Record output shortcut** and press the
    desired shortcut on a normal keyboard.
 5. Click **Save binding**. The mapping works while Creator Command Center is running, including when

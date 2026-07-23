@@ -1,7 +1,5 @@
 # Creator Command Center
 
-![Creator Command Center concept](creator-command-center-concept-v1.png)
-
 ## Product direction
 
 Creator Command Center turns the original Creator Micro into a general-purpose control surface for
@@ -9,37 +7,21 @@ local AI agents and high-frequency creator workflows. It borrows the useful prod
 the Codex Micro—glanceable state, tactile commands, and contextual layers—without copying its
 branding, icon set, key arrangement, or application interface.
 
-The Windows application must represent the attached Creator Micro accurately:
+The Windows application represents the original Creator Micro v1 according to its official QMK
+`LAYOUT` geometry and the physical product:
 
-- one separate top control rail with a scroll wheel and rotary dial;
-- a four-column by four-row matrix of exactly sixteen keys;
-- six agent-status positions and ten action positions by default;
+- 12 RGB mechanical keys arranged as two top keys, two rows of four, and two bottom keys;
+- a clickable horizontal roller at top-left and clickable rotary dial at top-right;
+- two circular specialty controls in the bottom corners;
+- counter-clockwise and clockwise actions for each encoder, for 20 bindable inputs total;
 - shared RGB/underglow behavior that reflects the Creator Micro v1 VIA limitations;
 - explicit connection, protocol, layer, and write-safety status.
 
-## Default Build layer
+## Default Codex layer
 
-| Position | Assignment | Type |
-|---|---|---|
-| 1 | Research Agent | Agent status |
-| 2 | Code Agent | Agent status |
-| 3 | Writer Agent | Agent status |
-| 4 | Design Agent | Agent status |
-| 5 | QA Agent | Agent status |
-| 6 | Deploy Agent | Agent status |
-| 7 | New Project | Action |
-| 8 | Run Tests | Action |
-| 9 | Build Project | Action |
-| 10 | Commit Changes | Action |
-| 11 | Explain Code | Action |
-| 12 | Find Issues | Action |
-| 13 | Refactor Code | Action |
-| 14 | Docs Lookup | Action |
-| 15 | Focus | Mode/action |
-| 16 | Custom | User-defined action |
-
-The dial defaults to zoom or scroll. The scroll wheel defaults to activity-timeline scrubbing.
-Every assignment is layer-specific and editable.
+All 20 inputs have stable physical identities. Default labels cover common Codex actions such as new
+task, focus Codex, approve, reject, review, test, explain, refactor, commit, push, documentation, and
+reasoning adjustment. Every assignment remains layer-specific and editable.
 
 ## Information architecture
 
@@ -87,14 +69,8 @@ rings and high-contrast mode.
 
 ## Implementation slices
 
-1. Replace the current diagnostic-only WPF window with the Overview shell and accurate 4x4 twin.
+1. Maintain the QMK-derived Creator Micro v1 device twin and versioned control descriptors.
 2. Add responsive agent/activity cards using the existing loopback session store.
 3. Persist layers and control assignments in a versioned local JSON configuration.
 4. Add accessible focus, hover, and state treatments.
 5. Connect the dial/scroll and RGB paths only after protocol qualification and explicit write gates.
-
-## Concept-generation prompt
-
-The concept was produced with the built-in image-generation workflow. The final correction required
-an explicit four-row map so both the physical device and digital twin contain exactly sixteen keys,
-with the two rotary controls in a separate rail above the matrix.

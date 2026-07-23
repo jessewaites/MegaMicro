@@ -79,9 +79,15 @@ var tests = new List<(string Name, Func<Task> Run)>
         var configuration = BindingConfiguration.CreateDefault();
         Check(configuration.Profiles.Count == 1, "one starter profile");
         Check(configuration.ActiveProfile.Layers.Count == 3, "three layers");
-        Check(configuration.ActiveProfile.Layers.All(x => x.Bindings.Count == 16), "sixteen keys per layer");
-        Check(configuration.ActiveProfile.Layers[0].Bindings.Select(x => x.Position).SequenceEqual(Enumerable.Range(1, 16)),
+        Check(configuration.ActiveProfile.Layers.All(x => x.Bindings.Count == CreatorMicroV1Layout.ControlCount), "twenty inputs per layer");
+        Check(configuration.ActiveProfile.Layers[0].Bindings.Select(x => x.Position).SequenceEqual(Enumerable.Range(1, CreatorMicroV1Layout.ControlCount)),
             "physical positions are stable");
+        Check(configuration.ActiveProfile.Layers[0].Bindings.Count(x => x.Kind == CreatorControlKind.Key) == 12,
+            "twelve RGB mechanical keys");
+        Check(configuration.ActiveProfile.Layers[0].Bindings.Count(x => x.Kind is CreatorControlKind.RollerTurn or CreatorControlKind.DialTurn) == 4,
+            "four encoder directions");
+        Check(configuration.ActiveProfile.Layers[0].Bindings[0].ControlName == "Roller press", "top-left control is roller press");
+        Check(configuration.ActiveProfile.Layers[0].Bindings[3].ControlName == "Dial press", "top-right control is dial press");
         Check(configuration.ActiveProfile.Layers[0].Bindings[0].Trigger.DisplayName == "F13", "first default trigger");
         Check(configuration.ActiveProfile.Layers[0].Bindings[15].Trigger.DisplayName == "Ctrl + Alt + Shift + F16",
             "extended default trigger");
@@ -105,6 +111,32 @@ var tests = new List<(string Name, Func<Task> Run)>
             Check(loaded.Action == BindingActionKind.FocusCodexThenShortcut, "action persisted");
             Check(loaded.Output.DisplayName == "Ctrl + N", "shortcut persisted");
             Check(!File.ReadAllText(path).Contains("DisplayName", StringComparison.Ordinal), "computed labels omitted from JSON");
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, true);
+        }
+        return Task.CompletedTask;
+    }),
+    ("v1 keymap migration", () =>
+    {
+        var directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"MegaMicro-migration-{Guid.NewGuid():N}");
+        var path = System.IO.Path.Combine(directory, "bindings.json");
+        try
+        {
+            var store = new BindingConfigStore(path);
+            var oldConfiguration = BindingConfiguration.CreateDefault();
+            oldConfiguration.Version = 1;
+            foreach (var layer in oldConfiguration.Profiles.SelectMany(profile => profile.Layers))
+                layer.Bindings.RemoveAll(binding => binding.Position > 16);
+            store.Save(oldConfiguration);
+
+            var migrated = store.Load();
+            Check(migrated.Version == 2, "configuration version migrated");
+            Check(migrated.ActiveProfile.Layers.All(layer => layer.Bindings.Count == CreatorMicroV1Layout.ControlCount),
+                "encoder directions added");
+            Check(migrated.ActiveProfile.Layers[0].Bindings.Single(binding => binding.Position == 20).ControlName == "Dial clockwise",
+                "new physical control metadata added");
         }
         finally
         {

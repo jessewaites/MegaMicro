@@ -11,6 +11,47 @@ public enum BindingActionKind
     FocusCodexThenShortcut,
 }
 
+public enum CreatorControlKind
+{
+    Key,
+    RollerPress,
+    DialPress,
+    SpecialButton,
+    RollerTurn,
+    DialTurn,
+}
+
+public sealed record CreatorControlDescriptor(int Position, string Name, CreatorControlKind Kind);
+
+public static class CreatorMicroV1Layout
+{
+    public const int ControlCount = 20;
+
+    public static IReadOnlyList<CreatorControlDescriptor> Controls { get; } =
+    [
+        new(1, "Roller press", CreatorControlKind.RollerPress),
+        new(2, "Top key 1", CreatorControlKind.Key),
+        new(3, "Top key 2", CreatorControlKind.Key),
+        new(4, "Dial press", CreatorControlKind.DialPress),
+        new(5, "Key 1", CreatorControlKind.Key),
+        new(6, "Key 2", CreatorControlKind.Key),
+        new(7, "Key 3", CreatorControlKind.Key),
+        new(8, "Key 4", CreatorControlKind.Key),
+        new(9, "Key 5", CreatorControlKind.Key),
+        new(10, "Key 6", CreatorControlKind.Key),
+        new(11, "Key 7", CreatorControlKind.Key),
+        new(12, "Key 8", CreatorControlKind.Key),
+        new(13, "Bottom-left button", CreatorControlKind.SpecialButton),
+        new(14, "Bottom key 1", CreatorControlKind.Key),
+        new(15, "Bottom key 2", CreatorControlKind.Key),
+        new(16, "Bottom-right button", CreatorControlKind.SpecialButton),
+        new(17, "Roller left", CreatorControlKind.RollerTurn),
+        new(18, "Roller right", CreatorControlKind.RollerTurn),
+        new(19, "Dial counter-clockwise", CreatorControlKind.DialTurn),
+        new(20, "Dial clockwise", CreatorControlKind.DialTurn),
+    ];
+}
+
 public sealed record KeyboardGestureSpec
 {
     public int VirtualKey { get; init; }
@@ -59,6 +100,8 @@ public sealed record KeyboardGestureSpec
 public sealed class ControlBinding
 {
     public int Position { get; set; }
+    public string ControlName { get; set; } = "Control";
+    public CreatorControlKind Kind { get; set; }
     public string Label { get; set; } = "Unassigned";
     public KeyboardGestureSpec Trigger { get; set; } = new();
     public BindingActionKind Action { get; set; }
@@ -82,7 +125,7 @@ public sealed class BindingProfile
 
 public sealed class BindingConfiguration
 {
-    public int Version { get; set; } = 1;
+    public int Version { get; set; } = 2;
     public string ActiveProfileId { get; set; } = "codex-default";
     public List<BindingProfile> Profiles { get; set; } = [];
 
@@ -92,26 +135,30 @@ public sealed class BindingConfiguration
     {
         var labels = new[]
         {
-            "New task", "Focus Codex", "Approve", "Reject",
-            "Review changes", "Run tests", "Fix errors", "Explain",
-            "Refactor", "Commit", "Push", "Documentation",
-            "Voice", "Search", "Reasoning", "Custom",
+            "Roller press", "New task", "Focus Codex", "Dial press",
+            "Approve", "Reject", "Review changes", "Run tests",
+            "Fix errors", "Explain", "Refactor", "Commit",
+            "Layer", "Push", "Documentation", "Lighting",
+            "Previous", "Next", "Reasoning down", "Reasoning up",
         };
         var profile = new BindingProfile { Id = "codex-default", Name = "Codex", ActiveLayer = 1 };
         for (var layerNumber = 1; layerNumber <= 3; layerNumber++)
         {
             var layer = new BindingLayer { Number = layerNumber, Name = layerNumber == 1 ? "Codex" : $"Layer {layerNumber}" };
-            for (var index = 0; index < 16; index++)
+            for (var index = 0; index < CreatorMicroV1Layout.ControlCount; index++)
             {
                 var trigger = index < 12
                     ? new KeyboardGestureSpec { VirtualKey = 0x7C + index } // F13-F24
                     : new KeyboardGestureSpec { VirtualKey = 0x7C + index - 12, Control = true, Alt = true, Shift = true };
+                var control = CreatorMicroV1Layout.Controls[index];
                 layer.Bindings.Add(new ControlBinding
                 {
                     Position = index + 1,
-                    Label = layerNumber == 1 ? labels[index] : $"Key {index + 1}",
+                    ControlName = control.Name,
+                    Kind = control.Kind,
+                    Label = layerNumber == 1 ? labels[index] : control.Name,
                     Trigger = trigger,
-                    Action = index == 1 && layerNumber == 1 ? BindingActionKind.FocusCodex : BindingActionKind.None,
+                    Action = index == 2 && layerNumber == 1 ? BindingActionKind.FocusCodex : BindingActionKind.None,
                 });
             }
             profile.Layers.Add(layer);
@@ -138,7 +185,9 @@ public sealed class BindingConfigStore
         try
         {
             var value = JsonSerializer.Deserialize<BindingConfiguration>(File.ReadAllText(Path), Options);
-            return IsValid(value) ? value! : BindingConfiguration.CreateDefault();
+            if (value is null) return BindingConfiguration.CreateDefault();
+            Migrate(value);
+            return IsValid(value) ? value : BindingConfiguration.CreateDefault();
         }
         catch (JsonException) { return BindingConfiguration.CreateDefault(); }
     }
@@ -152,7 +201,43 @@ public sealed class BindingConfigStore
         File.Move(temporary, Path, true);
     }
 
+    private static void Migrate(BindingConfiguration value)
+    {
+        foreach (var layer in value.Profiles.SelectMany(profile => profile.Layers))
+        {
+            foreach (var binding in layer.Bindings.Where(binding => binding.Position <= 16))
+            {
+                var descriptor = CreatorMicroV1Layout.Controls[binding.Position - 1];
+                binding.ControlName = descriptor.Name;
+                binding.Kind = descriptor.Kind;
+            }
+            if (layer.Bindings.Count == 16)
+            {
+                foreach (var descriptor in CreatorMicroV1Layout.Controls.Skip(16))
+                {
+                    layer.Bindings.Add(new ControlBinding
+                    {
+                        Position = descriptor.Position,
+                        ControlName = descriptor.Name,
+                        Kind = descriptor.Kind,
+                        Label = descriptor.Name,
+                        Trigger = new KeyboardGestureSpec
+                        {
+                            VirtualKey = 0x7C + descriptor.Position - 13,
+                            Control = true,
+                            Alt = true,
+                            Shift = true,
+                        },
+                    });
+                }
+            }
+        }
+        value.Version = 2;
+    }
+
     private static bool IsValid(BindingConfiguration? value) => value is not null &&
         value.Profiles.Any(x => x.Id == value.ActiveProfileId) &&
-        value.Profiles.All(x => x.Layers.Count > 0 && x.Layers.All(layer => layer.Bindings.Count == 16));
+        value.Profiles.All(x => x.Layers.Count > 0 && x.Layers.All(layer =>
+            layer.Bindings.Count == CreatorMicroV1Layout.ControlCount &&
+            layer.Bindings.Select(binding => binding.Position).Order().SequenceEqual(Enumerable.Range(1, CreatorMicroV1Layout.ControlCount))));
 }
