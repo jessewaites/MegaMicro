@@ -9,6 +9,9 @@ This is the Windows-native port of MegaMicro. It currently provides:
 - a native WPF status dashboard;
 - no firmware flashing and no exclusive HID access.
 
+The next interface direction is documented in
+[`docs/design/CREATOR_COMMAND_CENTER.md`](docs/design/CREATOR_COMMAND_CENTER.md).
+
 ## Build and run
 
 ```powershell
