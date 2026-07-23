@@ -5,7 +5,8 @@ using Microsoft.Win32.SafeHandles;
 namespace MegaMicro.Windows.Core;
 
 public sealed record HidInterface(string Path, ushort VendorId, ushort ProductId,
-    ushort UsagePage, ushort Usage, string Product)
+    ushort UsagePage, ushort Usage, string Product,
+    ushort InputReportLength, ushort OutputReportLength, ushort FeatureReportLength)
 {
     public bool IsCreatorMicroV1 => VendorId == 0x574C;
     public bool IsModernMicro => VendorId == 0x303A && ProductId is 0x8360 or 0x8297 or 0x8298;
@@ -60,7 +61,7 @@ public static class HidDiscovery
         if (handle.IsInvalid) return null;
         var attributes = new HIDD_ATTRIBUTES { Size = Marshal.SizeOf<HIDD_ATTRIBUTES>() };
         if (!HidD_GetAttributes(handle, ref attributes)) return null;
-        ushort usagePage = 0, usage = 0;
+        ushort usagePage = 0, usage = 0, inputLength = 0, outputLength = 0, featureLength = 0;
         if (HidD_GetPreparsedData(handle, out var preparsed))
         {
             try
@@ -69,6 +70,9 @@ public static class HidDiscovery
                 {
                     usagePage = caps.UsagePage;
                     usage = caps.Usage;
+                    inputLength = caps.InputReportByteLength;
+                    outputLength = caps.OutputReportByteLength;
+                    featureLength = caps.FeatureReportByteLength;
                 }
             }
             finally { HidD_FreePreparsedData(preparsed); }
@@ -81,7 +85,8 @@ public static class HidDiscovery
                 product = Marshal.PtrToStringUni(productBuffer) ?? "";
         }
         finally { Marshal.FreeHGlobal(productBuffer); }
-        return new HidInterface(path, attributes.VendorID, attributes.ProductID, usagePage, usage, product);
+        return new HidInterface(path, attributes.VendorID, attributes.ProductID, usagePage, usage,
+            product, inputLength, outputLength, featureLength);
     }
 
     [StructLayout(LayoutKind.Sequential)] private struct SP_DEVICE_INTERFACE_DATA { public int cbSize; public Guid InterfaceClassGuid; public int Flags; public UIntPtr Reserved; }

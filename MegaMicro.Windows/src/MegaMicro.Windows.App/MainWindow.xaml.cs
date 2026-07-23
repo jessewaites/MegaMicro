@@ -8,6 +8,7 @@ public partial class MainWindow : Window
 {
     private readonly SessionStore store = new();
     private WebhookServer? server;
+    private HidInterface? viaInterface;
 
     public MainWindow()
     {
@@ -44,10 +45,38 @@ public partial class MainWindow : Window
         {
             var report = HardwareProbe.RunReadOnly();
             HardwareStatus.Text = report.Summary;
+            viaInterface = report.Interfaces.FirstOrDefault(x => x.IsCreatorMicroV1 && x.IsViaRaw);
+            ViaHandshakeButton.IsEnabled = viaInterface is not null;
+            HardwareDetails.Text = string.Join(Environment.NewLine, report.Interfaces.Select(x =>
+                $"VID {x.VendorId:X4} PID {x.ProductId:X4} · usage {x.UsagePage:X4}/{x.Usage:X2} · reports {x.InputReportLength}/{x.OutputReportLength}"));
         }
         catch (Exception ex)
         {
             HardwareStatus.Text = $"Probe failed safely: {ex.Message}";
+        }
+    }
+
+    private async void ViaHandshake_Click(object sender, RoutedEventArgs e)
+    {
+        if (viaInterface is null) return;
+        ViaHandshakeButton.IsEnabled = false;
+        HardwareStatus.Text = "Requesting the VIA protocol version (no device settings will change)…";
+        try
+        {
+            await using var transport = new WindowsHidTransport(viaInterface);
+            transport.OpenShared();
+            var version = await transport.ReadViaProtocolVersionAsync(TimeSpan.FromMilliseconds(750));
+            HardwareStatus.Text = version is null
+                ? "Creator Micro is present, but it did not answer the VIA handshake. Close Work Louder Input or VIA and retry."
+                : $"Creator Micro VIA protocol handshake passed (version {version}). No settings were changed.";
+        }
+        catch (Exception ex)
+        {
+            HardwareStatus.Text = $"VIA handshake failed safely: {ex.Message}";
+        }
+        finally
+        {
+            ViaHandshakeButton.IsEnabled = viaInterface is not null;
         }
     }
 

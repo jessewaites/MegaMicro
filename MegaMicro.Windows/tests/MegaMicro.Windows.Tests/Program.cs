@@ -25,6 +25,33 @@ var tests = new List<(string Name, Func<Task> Run)>
         Check(report.State == "coding" && report.Session == "abc", "pre-tool coding state");
         return Task.CompletedTask;
     }),
+    ("VIA report framing", () =>
+    {
+        var request = ViaProtocol.CreateProtocolVersionRequest(33);
+        Check(request.Length == 33 && request[0] == 0 && request[1] == ViaProtocol.GetProtocolVersion,
+            "Windows report ID precedes VIA command");
+        Check(request.Skip(2).All(x => x == 0), "request is zero padded");
+        return Task.CompletedTask;
+    }),
+    ("VIA version parsing", () =>
+    {
+        var numbered = new byte[] { 0, ViaProtocol.GetProtocolVersion, 0, 12 };
+        Check(ViaProtocol.TryParseProtocolVersion(numbered, numbered.Length, out var version) && version == 12,
+            "report-ID response parsed");
+        var payload = new byte[] { ViaProtocol.GetProtocolVersion, 1, 2 };
+        Check(ViaProtocol.TryParseProtocolVersion(payload, out version) && version == 258,
+            "payload-only response parsed");
+        return Task.CompletedTask;
+    }),
+    ("browser origin policy", () =>
+    {
+        Check(WebhookServer.IsAllowedBrowserOrigin(null), "non-browser callers allowed");
+        Check(WebhookServer.IsAllowedBrowserOrigin("http://localhost:3000"), "localhost allowed");
+        Check(WebhookServer.IsAllowedBrowserOrigin("https://127.0.0.1:5173"), "loopback allowed");
+        Check(!WebhookServer.IsAllowedBrowserOrigin("https://example.com"), "remote browser rejected");
+        Check(!WebhookServer.IsAllowedBrowserOrigin("not a uri"), "malformed origin rejected");
+        return Task.CompletedTask;
+    }),
     ("loopback webhook", async () =>
     {
         var store = new SessionStore();

@@ -23,8 +23,13 @@
                 <StackPanel>
                     <TextBlock Text="Hardware" FontWeight="SemiBold" FontSize="17" />
                     <TextBlock x:Name="HardwareStatus" Text="Not checked yet" Foreground="#AAB2C0" Margin="0,6,0,0" TextWrapping="Wrap" />
+                    <TextBlock x:Name="HardwareDetails" Foreground="#778191" Margin="0,5,18,0" TextWrapping="Wrap" FontFamily="Consolas" FontSize="12" />
                 </StackPanel>
-                <Button Grid.Column="1" Content="Run read-only probe" Click="Probe_Click" VerticalAlignment="Center" />
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <Button Content="Run read-only probe" Click="Probe_Click" Margin="0,0,0,8" />
+                    <Button x:Name="ViaHandshakeButton" Content="Check VIA protocol" Click="ViaHandshake_Click"
+                            IsEnabled="False" ToolTip="Requests the protocol version only; does not change lights or keymaps." />
+                </StackPanel>
             </Grid>
         </Border>
 

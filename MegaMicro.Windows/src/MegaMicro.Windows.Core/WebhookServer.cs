@@ -86,6 +86,11 @@ public sealed class WebhookServer : IAsyncDisposable
             }
             var all = request.ToArray();
             var head = Encoding.ASCII.GetString(all, 0, headerEnd);
+            if (!IsAllowedBrowserOrigin(ReadHeader(head, "Origin")))
+            {
+                await RespondAsync(stream, "403 Forbidden", "{\"ok\":false,\"error\":\"browser origin rejected\"}", token);
+                return;
+            }
             var first = head.Split("\r\n", 2)[0].Split(' ');
             var method = first.ElementAtOrDefault(0) ?? "";
             var path = first.ElementAtOrDefault(1) ?? "";
@@ -134,6 +139,23 @@ public sealed class WebhookServer : IAsyncDisposable
             if (line.StartsWith("Content-Length:", StringComparison.OrdinalIgnoreCase))
                 return int.TryParse(line[15..].Trim(), out var value) ? value : -1;
         return 0;
+    }
+
+    private static string? ReadHeader(string headers, string name)
+    {
+        foreach (var line in headers.Split("\r\n"))
+            if (line.StartsWith(name + ":", StringComparison.OrdinalIgnoreCase))
+                return line[(name.Length + 1)..].Trim();
+        return null;
+    }
+
+    public static bool IsAllowedBrowserOrigin(string? origin)
+    {
+        if (string.IsNullOrWhiteSpace(origin)) return true;
+        if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri)) return false;
+        return uri.Scheme is "http" or "https" &&
+               (uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
+                IPAddress.TryParse(uri.Host, out var address) && IPAddress.IsLoopback(address));
     }
 
     private static async Task RespondAsync(NetworkStream stream, string status, string json, CancellationToken token)
