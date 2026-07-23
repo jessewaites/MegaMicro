@@ -72,10 +72,10 @@ public sealed class SessionStore
         state = value.Trim().ToLowerInvariant() switch
         {
             "idle" => AgentState.Idle,
-            "success" => AgentState.Success,
+            "success" or "complete" or "completed" or "done" => AgentState.Success,
             "thinking" => AgentState.Thinking,
-            "coding" => AgentState.Coding,
-            "waiting" => AgentState.Waiting,
+            "coding" or "working" or "running" or "active" => AgentState.Coding,
+            "waiting" or "needs_input" or "needs-input" or "attention" or "blocked" => AgentState.Waiting,
             "error" => AgentState.Error,
             _ => (AgentState)(-1),
         };

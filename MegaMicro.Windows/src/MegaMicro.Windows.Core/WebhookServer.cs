@@ -117,7 +117,11 @@ public sealed class WebhookServer : IAsyncDisposable
                 }
                 catch (Exception ex) when (ex is JsonException or ArgumentException)
                 {
-                    await RespondAsync(stream, "400 Bad Request", "{\"ok\":false}", token);
+                    var message = ex is JsonException
+                        ? "Request body must be valid JSON with source, state, and session fields."
+                        : ex.Message;
+                    await RespondAsync(stream, "400 Bad Request",
+                        JsonSerializer.Serialize(new { ok = false, error = message }), token);
                 }
                 return;
             }

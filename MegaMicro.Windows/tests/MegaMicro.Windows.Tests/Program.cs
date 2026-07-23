@@ -7,6 +7,9 @@ var tests = new List<(string Name, Func<Task> Run)>
     ("state parsing", () =>
     {
         Check(SessionStore.TryParseState("waiting", out var state) && state == AgentState.Waiting, "waiting state");
+        Check(SessionStore.TryParseState("working", out state) && state == AgentState.Coding, "working alias");
+        Check(SessionStore.TryParseState("complete", out state) && state == AgentState.Success, "complete alias");
+        Check(SessionStore.TryParseState("needs_input", out state) && state == AgentState.Waiting, "needs-input alias");
         Check(!SessionStore.TryParseState("unknown", out _), "unknown rejected");
         return Task.CompletedTask;
     }),
@@ -64,6 +67,19 @@ var tests = new List<(string Name, Func<Task> Run)>
         var response = await client.PostAsync("http://127.0.0.1:48812/state", content);
         Check(response.IsSuccessStatusCode, "POST accepted");
         Check(store.Snapshot().Single().State == AgentState.Success, "stored success");
+    }),
+    ("friendly webhook aliases", async () =>
+    {
+        var store = new SessionStore();
+        await using var server = new WebhookServer(store, 48813);
+        server.Start();
+        using var client = new HttpClient();
+        using var content = new StringContent(
+            "{\"source\":\"codex\",\"state\":\"working\",\"session\":\"friendly\"}",
+            Encoding.UTF8, "application/json");
+        var response = await client.PostAsync("http://127.0.0.1:48813/state", content);
+        Check(response.IsSuccessStatusCode, "working alias accepted");
+        Check(store.Snapshot().Single().State == AgentState.Coding, "working normalized to coding");
     }),
 };
 

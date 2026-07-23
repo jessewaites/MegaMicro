@@ -28,3 +28,18 @@ dotnet run --project .\tests\MegaMicro.Windows.Tests -c Release
 Hardware interaction remains read-only. The VIA handshake sends only the public protocol-version
 request. RGB writes and key-event handling will be enabled only after the raw interface is qualified
 across representative physical boards and firmware revisions.
+
+## Send an agent-state event
+
+With MegaMicro running, PowerShell can send a test event:
+
+```powershell
+Invoke-RestMethod `
+  -Method Post `
+  -Uri http://127.0.0.1:48802/state `
+  -ContentType application/json `
+  -Body '{"source":"codex","state":"working","session":"test-agent","cwd":"C:\TestProject"}'
+```
+
+Canonical states are `idle`, `thinking`, `coding`, `waiting`, `success`, and `error`. Friendly
+aliases are accepted, including `working`, `running`, `complete`, `done`, and `needs_input`.
