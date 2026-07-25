@@ -48,13 +48,78 @@ final class ConfigRoundtripTests: XCTestCase {
         XCTAssertEqual(decoded.promptSnippets, DefaultPromptSnippets.all)
     }
 
-    func testPromptSnippetReplacesOnlyFilledTemplateValues() {
-        let snippet = PromptSnippet(
-            id: "test", name: "Test",
-            prompt: "Build {{request}} in {{project}} for {{track}}.", builtIn: false)
-        XCTAssertEqual(
-            snippet.rendered(with: ["request": "authentication", "project": "MegaMicro", "track": ""]),
-            "Build authentication in MegaMicro for {{track}}.")
+    func testDefaultPromptSnippetsContainNoTemplateVariables() {
+        for snippet in DefaultPromptSnippets.all {
+            XCTAssertFalse(snippet.prompt.contains("{{"), snippet.name)
+            XCTAssertFalse(snippet.prompt.contains("}}"), snippet.name)
+        }
+        XCTAssertEqual(DefaultPromptSnippets.all.first?.name, "How This Works")
+        XCTAssertEqual(DefaultPromptSnippets.worker.name, "Parallel Builder")
+        XCTAssertTrue(
+            DefaultPromptSnippets.planner.prompt.contains(
+                "prefixed by phase (A1, A2, B1...)"))
+        XCTAssertTrue(
+            DefaultPromptSnippets.planner.prompt.contains(
+                "create and push a branch named `megaplan-v1`"))
+        XCTAssertTrue(
+            DefaultPromptSnippets.planner.prompt.contains(
+                "Default to a single phase."))
+        XCTAssertTrue(
+            DefaultPromptSnippets.planner.prompt.contains(
+                "MASTER.md states the phases"))
+        XCTAssertTrue(
+            DefaultPromptSnippets.planner.prompt.contains(
+                "exactly one track owner or is explicitly listed in MASTER.md as integration-owned"))
+        XCTAssertTrue(
+            DefaultPromptSnippets.planner.prompt.contains("its expected branch name"))
+        XCTAssertTrue(
+            DefaultPromptSnippets.planner.prompt.contains(
+                "point to the same plan commit"))
+        XCTAssertTrue(
+            DefaultPromptSnippets.worker.prompt.contains("`TODO(integration):`"))
+        XCTAssertTrue(
+            DefaultPromptSnippets.worker.prompt.contains(
+                "Tracks in earlier phases are already merged into your branch."))
+        XCTAssertTrue(
+            DefaultPromptSnippets.worker.prompt.contains(
+                "Do not edit anything under MegaPlan/."))
+        XCTAssertTrue(
+            DefaultPromptSnippets.worker.prompt.contains(
+                "The final implementation commit message must summarize"))
+        XCTAssertTrue(
+            DefaultPromptSnippets.integrator.prompt.contains(
+                "Grep the merged tree for `TODO(integration):` and resolve every one."))
+        XCTAssertTrue(
+            DefaultPromptSnippets.howThisWorks.prompt.contains(
+                "For each track in phase A, create a Conductor workspace"))
+        XCTAssertTrue(
+            DefaultPromptSnippets.howThisWorks.prompt.contains(
+                "git worktree add ../proj-a1 -b track/a1 megaplan-v1"))
+        XCTAssertTrue(
+            DefaultPromptSnippets.howThisWorks.prompt.contains(
+                "run the full checkpoint verification from MASTER.md."))
+        XCTAssertTrue(
+            DefaultPromptSnippets.howThisWorks.prompt.contains(
+                "git diff --name-only \"$(git merge-base <base-branch> <track-branch>)\"...<track-branch>"))
+        XCTAssertTrue(
+            DefaultPromptSnippets.howThisWorks.prompt.contains(
+                "Do not create phase B workspaces unless the checkpoint is green."))
+        XCTAssertTrue(
+            DefaultPromptSnippets.integrator.prompt.contains(
+                "All track work has already been merged into this branch."))
+        XCTAssertTrue(
+            DefaultPromptSnippets.integrator.prompt.contains(
+                "inspect its original branch diff and the corresponding merge commit"))
+        XCTAssertFalse(
+            DefaultPromptSnippets.integrator.prompt.contains(
+                "Merge in the order given in MASTER.md."))
+        XCTAssertTrue(
+            DefaultPromptSnippets.all.allSatisfy {
+                !$0.prompt.contains("MegaPlan/reports") &&
+                !$0.prompt.contains("git show track/") &&
+                !$0.prompt.contains("INTEGRATION.md") &&
+                !$0.prompt.contains("briefs/")
+            })
     }
 
     func testDefaultProfilesCoverAllMappedControls() {

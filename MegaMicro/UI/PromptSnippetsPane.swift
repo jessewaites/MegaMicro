@@ -4,10 +4,6 @@ import SwiftUI
 struct PromptSnippetsPane: View {
     @Environment(AppState.self) private var appState
     @State private var selection: String?
-    @State private var request = ""
-    @State private var project = ""
-    @State private var track = ""
-    @State private var planPath = ""
     @State private var copied = false
 
     var body: some View {
@@ -108,18 +104,8 @@ struct PromptSnippetsPane: View {
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(nsColor: .separatorColor)))
                 .frame(minHeight: 250)
 
-            GroupBox("Template values (optional)") {
-                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
-                    placeholderRow("{{request}}", text: $request, prompt: "Original feature request")
-                    placeholderRow("{{project}}", text: $project, prompt: "Project or repository")
-                    placeholderRow("{{track}}", text: $track, prompt: "Assigned parallel track")
-                    placeholderRow("{{plan_path}}", text: $planPath, prompt: "Path to planning files")
-                }
-                .padding(4)
-            }
-
             HStack {
-                Text("Unfilled placeholders remain in the copied prompt.")
+                Text("Project details can be pasted after the prompt.")
                     .font(.footnote).foregroundStyle(.secondary)
                 Spacer()
                 if copied {
@@ -134,13 +120,6 @@ struct PromptSnippetsPane: View {
         }
         .padding(20)
         .onChange(of: selection) { copied = false }
-    }
-
-    private func placeholderRow(_ token: String, text: Binding<String>, prompt: String) -> some View {
-        GridRow {
-            Text(token).font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary)
-            TextField(prompt, text: text).textFieldStyle(.roundedBorder)
-        }
     }
 
     private var selectedSnippet: PromptSnippet? {
@@ -159,14 +138,8 @@ struct PromptSnippetsPane: View {
     }
 
     private func copy(_ snippet: PromptSnippet) {
-        let rendered = snippet.rendered(with: [
-            "request": request,
-            "project": project,
-            "track": track,
-            "plan_path": planPath,
-        ])
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(rendered, forType: .string)
+        NSPasteboard.general.setString(snippet.prompt, forType: .string)
         copied = true
     }
 }

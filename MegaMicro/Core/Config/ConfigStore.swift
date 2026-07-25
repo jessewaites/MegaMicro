@@ -32,7 +32,7 @@ struct LayoutSettings: Codable, Hashable, Sendable {
 
 /// The whole persisted configuration, one versioned Codable document.
 struct AppConfig: Codable, Hashable, Sendable {
-    static let currentVersion = 12
+    static let currentVersion = 27
 
     var version: Int = AppConfig.currentVersion
     var webhookPort: UInt16 = 48802
@@ -189,6 +189,157 @@ final class ConfigStore {
                 config.keyBindings[slot] = .workspace(workspace)
             }
             config.workspaceKeyPins = [:]
+        }
+        if config.version < 13 {
+            // Template values are now supplied as a follow-up message. Remove
+            // the former placeholder sections from built-ins while preserving
+            // any other text the user may have edited.
+            let obsoleteSections = [
+                "Request:\n{{request}}\n\n",
+                "Original request:\n{{request}}\n\n",
+                "Project:\n{{project}}\n\n",
+                "Assigned track:\n{{track}}\n\n",
+                "Plan location:\n{{plan_path}}\n\n",
+            ]
+            for index in config.promptSnippets.indices where config.promptSnippets[index].builtIn {
+                for section in obsoleteSections {
+                    config.promptSnippets[index].prompt =
+                        config.promptSnippets[index].prompt.replacingOccurrences(of: section, with: "")
+                }
+                config.promptSnippets[index].prompt =
+                    config.promptSnippets[index].prompt.replacingOccurrences(
+                        of: "Create a planning folder in the repository containing:",
+                        with: "Create a planning folder named MegaPlan in the repository containing:")
+            }
+        }
+        if config.version < 14,
+           let index = config.promptSnippets.firstIndex(where: {
+               $0.id == DefaultPromptSnippets.planner.id && $0.builtIn
+           }) {
+            config.promptSnippets[index] = DefaultPromptSnippets.planner
+        }
+        if config.version < 15,
+           let index = config.promptSnippets.firstIndex(where: {
+               $0.id == DefaultPromptSnippets.worker.id && $0.builtIn
+           }) {
+            config.promptSnippets[index] = DefaultPromptSnippets.worker
+        }
+        if config.version < 16,
+           let index = config.promptSnippets.firstIndex(where: {
+               $0.id == DefaultPromptSnippets.integrator.id && $0.builtIn
+           }) {
+            config.promptSnippets[index] = DefaultPromptSnippets.integrator
+        }
+        if config.version < 17,
+           let index = config.promptSnippets.firstIndex(where: {
+               $0.id == DefaultPromptSnippets.planner.id && $0.builtIn
+           }) {
+            config.promptSnippets[index] = DefaultPromptSnippets.planner
+        }
+        if config.version < 18 {
+            // Built-in source text is now unwrapped into semantic paragraphs
+            // so TextEditor performs the only visible line wrapping.
+            let defaults = Dictionary(
+                uniqueKeysWithValues: DefaultPromptSnippets.all.map { ($0.id, $0) })
+            for index in config.promptSnippets.indices
+            where config.promptSnippets[index].builtIn {
+                if let updated = defaults[config.promptSnippets[index].id] {
+                    config.promptSnippets[index] = updated
+                }
+            }
+        }
+        if config.version < 19,
+           !config.promptSnippets.contains(where: {
+               $0.id == DefaultPromptSnippets.howThisWorks.id
+           }) {
+            config.promptSnippets.insert(DefaultPromptSnippets.howThisWorks, at: 0)
+        }
+        if config.version < 20 {
+            let updated = [
+                DefaultPromptSnippets.howThisWorks.id: DefaultPromptSnippets.howThisWorks,
+                DefaultPromptSnippets.planner.id: DefaultPromptSnippets.planner,
+                DefaultPromptSnippets.worker.id: DefaultPromptSnippets.worker,
+            ]
+            for index in config.promptSnippets.indices
+            where config.promptSnippets[index].builtIn {
+                if let snippet = updated[config.promptSnippets[index].id] {
+                    config.promptSnippets[index] = snippet
+                }
+            }
+        }
+        if config.version < 21 {
+            let updated = [
+                DefaultPromptSnippets.howThisWorks.id: DefaultPromptSnippets.howThisWorks,
+                DefaultPromptSnippets.planner.id: DefaultPromptSnippets.planner,
+                DefaultPromptSnippets.integrator.id: DefaultPromptSnippets.integrator,
+            ]
+            for index in config.promptSnippets.indices
+            where config.promptSnippets[index].builtIn {
+                if let snippet = updated[config.promptSnippets[index].id] {
+                    config.promptSnippets[index] = snippet
+                }
+            }
+        }
+        if config.version < 22 {
+            let updated = [
+                DefaultPromptSnippets.howThisWorks.id: DefaultPromptSnippets.howThisWorks,
+                DefaultPromptSnippets.worker.id: DefaultPromptSnippets.worker,
+            ]
+            for index in config.promptSnippets.indices
+            where config.promptSnippets[index].builtIn {
+                if let snippet = updated[config.promptSnippets[index].id] {
+                    config.promptSnippets[index] = snippet
+                }
+            }
+        }
+        if config.version < 23 {
+            let updated = [
+                DefaultPromptSnippets.planner.id: DefaultPromptSnippets.planner,
+                DefaultPromptSnippets.worker.id: DefaultPromptSnippets.worker,
+                DefaultPromptSnippets.integrator.id: DefaultPromptSnippets.integrator,
+            ]
+            for index in config.promptSnippets.indices
+            where config.promptSnippets[index].builtIn {
+                if let snippet = updated[config.promptSnippets[index].id] {
+                    config.promptSnippets[index] = snippet
+                }
+            }
+        }
+        if config.version < 24,
+           let index = config.promptSnippets.firstIndex(where: {
+               $0.id == DefaultPromptSnippets.howThisWorks.id && $0.builtIn
+           }) {
+            config.promptSnippets[index] = DefaultPromptSnippets.howThisWorks
+        }
+        if config.version < 25 {
+            let defaults = Dictionary(
+                uniqueKeysWithValues: DefaultPromptSnippets.all.map { ($0.id, $0) })
+            for index in config.promptSnippets.indices
+            where config.promptSnippets[index].builtIn {
+                if let updated = defaults[config.promptSnippets[index].id] {
+                    config.promptSnippets[index] = updated
+                }
+            }
+        }
+        if config.version < 26 {
+            let defaults = Dictionary(
+                uniqueKeysWithValues: DefaultPromptSnippets.all.map { ($0.id, $0) })
+            for index in config.promptSnippets.indices
+            where config.promptSnippets[index].builtIn {
+                if let updated = defaults[config.promptSnippets[index].id] {
+                    config.promptSnippets[index] = updated
+                }
+            }
+        }
+        if config.version < 27 {
+            let defaults = Dictionary(
+                uniqueKeysWithValues: DefaultPromptSnippets.all.map { ($0.id, $0) })
+            for index in config.promptSnippets.indices
+            where config.promptSnippets[index].builtIn {
+                if let updated = defaults[config.promptSnippets[index].id] {
+                    config.promptSnippets[index] = updated
+                }
+            }
         }
         if config.version < 4 {
             // Key 10 is the dedicated profile-switch key in every profile.
