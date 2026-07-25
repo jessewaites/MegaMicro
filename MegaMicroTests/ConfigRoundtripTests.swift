@@ -60,7 +60,7 @@ final class ConfigRoundtripTests: XCTestCase {
                 "prefixed by phase (A1, A2, B1...)"))
         XCTAssertTrue(
             DefaultPromptSnippets.planner.prompt.contains(
-                "create and push a branch named `megaplan-v1`"))
+                "Commit to the current parent feature branch and push that branch."))
         XCTAssertTrue(
             DefaultPromptSnippets.planner.prompt.contains(
                 "Default to a single phase."))
@@ -72,9 +72,7 @@ final class ConfigRoundtripTests: XCTestCase {
                 "exactly one track owner or is explicitly listed in MASTER.md as integration-owned"))
         XCTAssertTrue(
             DefaultPromptSnippets.planner.prompt.contains("its expected branch name"))
-        XCTAssertTrue(
-            DefaultPromptSnippets.planner.prompt.contains(
-                "point to the same plan commit"))
+        XCTAssertFalse(DefaultPromptSnippets.planner.prompt.contains("megaplan-v1"))
         XCTAssertTrue(
             DefaultPromptSnippets.worker.prompt.contains("`TODO(integration):`"))
         XCTAssertTrue(
@@ -91,16 +89,34 @@ final class ConfigRoundtripTests: XCTestCase {
                 "Grep the merged tree for `TODO(integration):` and resolve every one."))
         XCTAssertTrue(
             DefaultPromptSnippets.howThisWorks.prompt.contains(
-                "For each track in phase A, create a Conductor workspace"))
+                "For each track in phase A, create a Conductor workspace from branch-name"))
         XCTAssertTrue(
             DefaultPromptSnippets.howThisWorks.prompt.contains(
-                "git worktree add ../proj-a1 -b track/a1 megaplan-v1"))
+                "0. PREPARE THE FEATURE BRANCH"))
+        XCTAssertTrue(
+            DefaultPromptSnippets.howThisWorks.prompt.contains(
+                "git checkout -b branch-name"))
+        XCTAssertTrue(
+            DefaultPromptSnippets.howThisWorks.prompt.contains(
+                "When creating each new workspace, set Base Branch to branch-name."))
+        XCTAssertTrue(
+            DefaultPromptSnippets.howThisWorks.prompt.contains(
+                "only ship to main after you know it all works together."))
+        XCTAssertFalse(
+            DefaultPromptSnippets.howThisWorks.prompt.contains(
+                "If you revise the plan mid-flight"))
+        XCTAssertFalse(
+            DefaultPromptSnippets.howThisWorks.prompt.contains(
+                "What you give up by trimming"))
+        XCTAssertTrue(
+            DefaultPromptSnippets.howThisWorks.prompt.contains(
+                "git worktree add ../proj-a1 -b track/a1 branch-name"))
         XCTAssertTrue(
             DefaultPromptSnippets.howThisWorks.prompt.contains(
                 "run the full checkpoint verification from MASTER.md."))
         XCTAssertTrue(
             DefaultPromptSnippets.howThisWorks.prompt.contains(
-                "git diff --name-only \"$(git merge-base <base-branch> <track-branch>)\"...<track-branch>"))
+                "git diff --name-only \"$(git merge-base <parent-feature-branch> <track-branch>)\"...<track-branch>"))
         XCTAssertTrue(
             DefaultPromptSnippets.howThisWorks.prompt.contains(
                 "Do not create phase B workspaces unless the checkpoint is green."))

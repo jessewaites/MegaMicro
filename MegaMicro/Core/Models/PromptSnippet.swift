@@ -109,11 +109,26 @@ enum DefaultPromptSnippets {
         prompt: removingSourceWraps("""
         Three prompts in order: Planner, then Builders in parallel, then Integrator.
 
+        0. PREPARE THE FEATURE BRANCH
+        First, make sure Conductor is closed. In your main checkout, create the
+        parent feature branch that all workspaces will eventually merge into:
+
+          git checkout -b branch-name
+
+          git push -u origin branch-name
+
+        Open Conductor freshly. When creating each new workspace, set Base Branch
+        to branch-name.
+
+        Build in parallel, merge the workspaces into branch-name, integrate with the
+        final agent, test the full assembly, and only ship to main after you know it
+        all works together.
+
         The one rule that matters: the plan must be committed and pushed before you
         create the builder workspaces, because they branch from a commit.
 
         1. PLAN
-        In your main checkout on an up-to-date base branch, paste the Planner prompt
+        In your main checkout on the parent feature branch, paste the Planner prompt
         and your request. It inspects the repo, asks about testing if unclear, writes
         MegaPlan/ plus any shared interfaces as real code, and stops.
 
@@ -123,52 +138,44 @@ enum DefaultPromptSnippets {
         as deferred to integration. Pay special attention to routes, registries,
         dependency injection, configuration, feature flags, migrations, generated
         files, and public exports. When it looks right, tell the planner to proceed.
-        It commits the plan on the current base branch and pushes a branch called
-        megaplan-v1 at that same commit.
+        It commits the plan and pushes the parent feature branch.
 
         3. BUILD
         MASTER.md groups the tracks into phases. Tracks in a phase run at the same
         time; a later phase starts only after the earlier one is merged.
 
-        For each track in phase A, create a Conductor workspace from megaplan-v1 and
+        For each track in phase A, create a Conductor workspace from branch-name and
         give it the Builder prompt plus its track file, or just:
 
           Read MegaPlan/A1-schema.md and follow it exactly. Do not read any other
           file under MegaPlan/.
 
-        By hand instead: git worktree add ../proj-a1 -b track/a1 megaplan-v1
+        By hand instead: git worktree add ../proj-a1 -b track/a1 branch-name
 
         Before merging a finished track, compare its changed files with the ownership
         list in its track file:
 
-          git diff --name-only "$(git merge-base <base-branch> <track-branch>)"...<track-branch>
+          git diff --name-only "$(git merge-base <parent-feature-branch> <track-branch>)"...<track-branch>
 
         If it changed files outside its scope, stop and have the builder explain or
-        remove them. Then merge it back to the base branch. When all of phase A is
-        merged, run the full checkpoint verification from MASTER.md. Do not create
-        phase B workspaces unless the checkpoint is green. If it fails, repair the
-        merged base, commit the repair, rerun verification, and only then create phase
-        B workspaces from the updated base. Repeat for every later phase.
+        remove them. Then merge it back to the parent feature branch. When all of
+        phase A is merged, run the full checkpoint verification from MASTER.md. Do
+        not create phase B workspaces unless the checkpoint is green. If it fails,
+        repair the parent feature branch, commit the repair, rerun verification, and
+        only then create phase B workspaces from the updated parent feature branch.
+        Repeat for every later phase.
 
-        MegaPlan/ is already on the base branch, so later phases pick it up
+        MegaPlan/ is already on the parent feature branch, so later phases pick it up
         automatically.
 
         4. INTEGRATE
         After the final phase is merged and its checkpoint is green, start one more
-        workspace from the base branch and paste the Integrator prompt. It resolves
-        the TODO(integration) stubs, audits the merged track changes, collapses
-        whatever the tracks duplicated, runs the full verification set, and checks
-        the original request end to end.
+        workspace from the parent feature branch and paste the Integrator prompt. It
+        resolves the TODO(integration) stubs, audits the merged track changes,
+        collapses whatever the tracks duplicated, runs the full verification set,
+        and checks the original request end to end.
 
         Budget real time here. Integration is usually more work than any one track.
-
-        If you revise the plan mid-flight, push megaplan-v2 rather than moving v1, and
-        re-create or update the affected workspaces.
-
-        What you give up by trimming: you lose the separate report files, so commit
-        messages and diffs are the durable record of what each track decided. The
-        pre-merge ownership check catches scope drift, and the integrator audits the
-        combined behavior.
         """),
         builtIn: true)
 
@@ -236,14 +243,13 @@ enum DefaultPromptSnippets {
         Show the user the track list, dependency graph, and conflict hotspots.
         Stop. After they approve:
         1. Stage only MegaPlan/ and the contract files you wrote. Never `git add -A`.
-        2. Commit, then create and push a branch named `megaplan-v1` at that commit
-           (next free version if taken). A branch, not a tag, so workspace tools can
-           pick it as a base.
-        3. Confirm that the current local base branch and the new `megaplan-vN`
-           branch point to the same plan commit.
-        4. Tell the user to create one workspace per track from `megaplan-v1`, which
-           track file goes with which, and that it is now safe to start.
-        Do not create worktrees or start builder work.
+        2. Commit to the current parent feature branch and push that branch.
+        3. Confirm that the remote parent feature branch contains the plan commit.
+        4. Tell the user which phase starts first, which track file goes with each
+           workspace, and that it is now safe to create those workspaces from the
+           parent feature branch.
+        Do not create branches, worktrees, or builder workspaces yourself, and do not
+        start builder work.
         """),
         builtIn: true)
 

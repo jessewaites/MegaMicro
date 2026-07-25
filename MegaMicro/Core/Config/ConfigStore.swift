@@ -32,7 +32,7 @@ struct LayoutSettings: Codable, Hashable, Sendable {
 
 /// The whole persisted configuration, one versioned Codable document.
 struct AppConfig: Codable, Hashable, Sendable {
-    static let currentVersion = 27
+    static let currentVersion = 29
 
     var version: Int = AppConfig.currentVersion
     var webhookPort: UInt16 = 48802
@@ -340,6 +340,18 @@ final class ConfigStore {
                     config.promptSnippets[index] = updated
                 }
             }
+        }
+        if config.version < 28,
+           let index = config.promptSnippets.firstIndex(where: {
+               $0.id == DefaultPromptSnippets.howThisWorks.id && $0.builtIn
+           }) {
+            config.promptSnippets[index] = DefaultPromptSnippets.howThisWorks
+        }
+        if config.version < 29,
+           let index = config.promptSnippets.firstIndex(where: {
+               $0.id == DefaultPromptSnippets.howThisWorks.id && $0.builtIn
+           }) {
+            config.promptSnippets[index] = DefaultPromptSnippets.howThisWorks
         }
         if config.version < 4 {
             // Key 10 is the dedicated profile-switch key in every profile.
