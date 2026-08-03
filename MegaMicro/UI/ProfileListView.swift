@@ -9,10 +9,25 @@ struct ProfileListView: View {
 
     var body: some View {
         @Bindable var state = appState
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 6) {
+        // A List nested in a VStack inside the split-view detail column gives
+        // SwiftUI an unresolvable layout: the whole window renders blank until
+        // something forces a re-layout (resizing the window brings it back).
+        // Every other pane uses Form, so this one does too.
+        Form {
+            Section {
+                Text("A profile is a complete set of key assignments, shortcuts, and agent-light colors. Choose one manually, or have MegaMicro switch profiles automatically when a particular app is in front.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Section {
+                ForEach(appState.config.profiles) { profile in
+                    row(profile)
+                }
+            } header: {
                 HStack {
-                    Text("Profiles").font(.title2.bold())
+                    Text("Profiles")
                     Spacer()
                     Button {
                         createProfile()
@@ -20,19 +35,9 @@ struct ProfileListView: View {
                         Label("New Profile", systemImage: "plus")
                     }
                 }
-                Text("A profile is a complete set of key assignments, shortcuts, and agent-light colors. Choose one manually, or have MegaMicro switch profiles automatically when a particular app is in front.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(16)
-
-            List {
-                ForEach(appState.config.profiles) { profile in
-                    row(profile)
-                }
             }
         }
+        .formStyle(.grouped)
         .sheet(item: Binding(
             get: { editingProfileID.flatMap { id in appState.config.profile(id: id) } },
             set: { editingProfileID = $0?.id }
