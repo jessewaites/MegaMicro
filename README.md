@@ -249,6 +249,22 @@ slash command, or a shortcut — but it does mean **those keys only work while M
 running**. To hand the board back to Input or Codex, use **Release for Editing** in Diagnostics
 and restore your keymap there.
 
+### Handing the keyboard to another app
+
+Only one app can drive the keyboard's JSON-RPC channel at a time. Running MegaMicro alongside the
+ChatGPT/Codex desktop app or Work Louder Input does not fail loudly — the two hosts interleave
+message fragments on the same channel and corrupt each other, so lighting silently stops working
+in both. There is no error to find.
+
+To hand the board over, use **Diagnostics → Release for Editing**. That clears MegaMicro's
+lighting, puts the factory keycodes back so the keys type again, and drops the USB handle. Click
+**Reconnect** to take it back.
+
+On quit, MegaMicro always clears the lighting so the board is never left showing an agent state
+that ended hours ago. It leaves the keys bound by default, since that is the normal working state;
+**Settings → Keyboard → "Restore the keyboard when MegaMicro quits"** changes that if you switch
+between apps often.
+
 ### 4. Install agent integrations
 
 Open **Integrations** and install or reinstall each provider you use. MegaMicro preserves

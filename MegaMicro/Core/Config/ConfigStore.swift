@@ -41,6 +41,10 @@ struct AppConfig: Codable, Hashable, Sendable {
 
     var version: Int = AppConfig.currentVersion
     var webhookPort: UInt16 = 48802
+    /// Put the factory keycodes back when MegaMicro quits, so the pad types
+    /// letters again with the app closed. Off by default: bound keys are the
+    /// working state, and reprogramming on every quit is churn.
+    var restoreKeyboardOnQuit: Bool = false
     var activeProfileID: String = "conductor"
     var triggerBindings: [TriggerBinding] = DefaultTriggers.codexMicro
     var profiles: [Profile] = DefaultProfiles.all
@@ -120,7 +124,7 @@ struct AppConfig: Codable, Hashable, Sendable {
     // keys) must never reset the user's whole configuration — each missing
     // field independently falls back to its default.
     enum CodingKeys: String, CodingKey {
-        case version, webhookPort, activeProfileID, triggerBindings,
+        case version, webhookPort, restoreKeyboardOnQuit, activeProfileID, triggerBindings,
              profiles, hooksInstalled, workspaceKeyPins, keyLegends, keyBindings,
              claudeHookEvents, codexHookEvents,
              activeLayoutID, customLayouts, layoutSettings, fleetExclusions, appearance,
@@ -133,6 +137,7 @@ struct AppConfig: Codable, Hashable, Sendable {
         let defaults = AppConfig()
         version = try c.decodeIfPresent(Int.self, forKey: .version) ?? defaults.version
         webhookPort = try c.decodeIfPresent(UInt16.self, forKey: .webhookPort) ?? defaults.webhookPort
+        restoreKeyboardOnQuit = try c.decodeIfPresent(Bool.self, forKey: .restoreKeyboardOnQuit) ?? defaults.restoreKeyboardOnQuit
         activeProfileID = try c.decodeIfPresent(String.self, forKey: .activeProfileID) ?? defaults.activeProfileID
         triggerBindings = try c.decodeIfPresent([TriggerBinding].self, forKey: .triggerBindings) ?? defaults.triggerBindings
         profiles = try c.decodeIfPresent([Profile].self, forKey: .profiles) ?? defaults.profiles

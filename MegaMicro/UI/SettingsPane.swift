@@ -40,6 +40,15 @@ struct SettingsPane: View {
             }
 
             Section {
+                Toggle("Restore the keyboard when MegaMicro quits", isOn: $state.config.restoreKeyboardOnQuit)
+            } header: {
+                Text("Keyboard")
+            } footer: {
+                Text("MegaMicro reprograms the keys so they report to it instead of typing letters — that is what makes per-key color work, and it means the keys do nothing while the app is closed. Turn this on to put the factory keycodes back on quit. Either way the lights are always cleared, so the board never sits there showing an agent state that ended hours ago. To hand the keyboard to Codex or Work Louder Input, use Diagnostics → Release for Editing: only one app can drive it at a time.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+
+            Section {
                 LabeledContent("Status") {
                     HStack(spacing: 6) {
                         Circle().fill(appState.syncServer.isRunning ? .green : .secondary)

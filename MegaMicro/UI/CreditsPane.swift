@@ -47,6 +47,15 @@ struct CreditsPane: View {
                         Link("@Jborgwing", destination: URL(string: "https://x.com/Jborgwing")!)
                     }
                     .font(.callout)
+                    HStack(spacing: 4) {
+                        Text("Scott Chacon —")
+                        Link("@chacon", destination: URL(string: "https://x.com/chacon")!)
+                    }
+                    .font(.callout)
+                    Text("Scott worked out that the Creator Micro 2's per-key lighting only responds once the keys are bound to the firmware's agent keycodes, and shared it. Without that, the colors on this keyboard would still be one shade for the whole board.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer(minLength: 20)

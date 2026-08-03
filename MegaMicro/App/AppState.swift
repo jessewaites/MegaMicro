@@ -15,6 +15,10 @@ struct EditTarget: Identifiable, Hashable {
 final class AppState {
     let sessionStore = SessionStore()
 
+    /// The live instance, so the app delegate can reach it while quitting.
+    /// SwiftUI owns the object; this is a weak back-reference, not ownership.
+    private(set) static weak var shared: AppState?
+
     /// The active keyboard layout: the built-in Codex Micro or an imported
     /// custom board.
     var layout: KeyboardLayout {
@@ -761,6 +765,7 @@ final class AppState {
         restoreRoster()
         applyAppearance()
         if !disabled.contains("hardware") { autoConnectHardware() }
+        AppState.shared = self
     }
 
     /// Grab the keyboard at launch. Requiring a trip to Diagnostics to press
@@ -1911,10 +1916,33 @@ final class AppState {
         log("keyboard released — edit layers freely, then hit Reconnect")
     }
 
+    /// Release the board for another app (Codex, Work Louder Input). Only one
+    /// host can drive the keyboard's JSON-RPC channel at a time, so this is the
+    /// handoff: lights cleared, factory keycodes restored, handle dropped.
     func disconnectHardware() {
         hardwareReleased = true
-        teardownHardware()
-        log("keyboard released")
+        guard let voai = hardwareDevice as? VOAIDevice else {
+            teardownHardware()
+            log("keyboard released")
+            return
+        }
+        voai.handBack(restoreKeymap: true) { [weak self] in
+            Task { @MainActor in
+                self?.teardownHardware()
+                self?.log("keyboard released — lights cleared, keys type again")
+            }
+        }
+    }
+
+    /// Called as the app quits. Always clears the lighting so the board isn't
+    /// left showing stale agent colours; only restores the keymap when the
+    /// user has asked for it, since bound keys are the normal working state.
+    func handBackKeyboardOnQuit() {
+        guard let voai = hardwareDevice as? VOAIDevice, hardwareConnected else { return }
+        let semaphore = DispatchSemaphore(value: 0)
+        voai.handBack(restoreKeymap: config.restoreKeyboardOnQuit) { semaphore.signal() }
+        // Quitting is synchronous; give the writes a moment to reach the wire.
+        _ = semaphore.wait(timeout: .now() + 1.5)
     }
 
     /// Semantic input from the pad (v.oai firmware): route key presses into

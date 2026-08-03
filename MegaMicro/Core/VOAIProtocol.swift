@@ -137,6 +137,16 @@ enum VOAI {
     /// LED 10 so both halves of the wide key light the same.
     static let ledIndexForAgentSlot = [0, 1, 2, 3, 4, 5, 10, 10, 11, 6, 7, 8, 9]
 
+    /// The factory keymap, used to hand the board back. Restoring this makes
+    /// the keys type letters again instead of reporting to MegaMicro.
+    static let stockKeymap = [
+        ["KC_A", "KC_B"],
+        ["KC_C", "KC_D", "KC_E", "KC_F"],
+        ["KC_G", "KC_H", "KC_I", "KC_J"],
+        ["KC_K", "KC_L", "KC_M"],
+    ]
+    static let stockEncoders = [["KC_VOLU", "KC_VOLD", "KC_MPLY"]]
+
     /// Keycodes the dial sends after MegaMicro programs it. These must match
     /// the dial entries in `DefaultTriggers`, and must be F20 or below —
     /// macOS has no virtual keycode for F21 and up, so those arrive nowhere.

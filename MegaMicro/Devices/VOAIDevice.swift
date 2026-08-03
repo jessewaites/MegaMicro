@@ -184,6 +184,68 @@ final class VOAIDevice: KeyboardDevice {
         }
     }
 
+    /// Hand the board back: clear the lighting we own and put the factory
+    /// keycodes back, so the keys type again and nothing is left glowing a
+    /// stale agent colour. Best-effort — the caller drops the handle either
+    /// way, and a keyboard that has already been unplugged has nothing to
+    /// restore.
+    func handBack(restoreKeymap: Bool, completion: @escaping () -> Void) {
+        guard isConnected else { return completion() }
+        // Everything dark first, so a failure mid-restore still leaves an
+        // honest board rather than yesterday's colours.
+        let dark = VOAI.ledIndexForAgentSlot.indices.map {
+            VOAI.ThreadParam(id: $0, c: 0, b: 0, e: VOAI.Effect.off.rawValue, s: 0, sk: 0, sa: 0)
+        }
+        if let message = try? VOAI.threadStatusRequest(id: 900, params: dark) {
+            for report in VOAI.frames(channel: VOAI.channelRPC, message: message) {
+                try? transport.write(report)
+            }
+        }
+        setUnderglow(.off)
+        lastParams = nil
+
+        guard restoreKeymap else { return completion() }
+        call({ try VOAI.fsReadRequest(id: $0, file: VOAIDevice.keymapFile) }) { [weak self] result in
+            guard let self,
+                  case .success(let payload) = result,
+                  let config = VOAIDevice.keymapConfig(from: payload),
+                  let restored = VOAIDevice.restoringStockKeys(in: config),
+                  let encoded = try? JSONSerialization.data(withJSONObject: restored),
+                  let text = String(data: encoded, encoding: .utf8)
+            else { return completion() }
+            self.call({ try VOAI.fsWriteRequest(id: $0, file: VOAIDevice.keymapFile, data: text) }) { _ in
+                completion()
+            }
+        }
+    }
+
+    /// Puts the factory keycodes back on every layer we may have bound.
+    static func restoringStockKeys(in config: [String: Any]) -> [String: Any]? {
+        var config = config
+        guard var profiles = config["profiles"] as? [[String: Any]], !profiles.isEmpty else { return nil }
+        for p in profiles.indices {
+            var profile = profiles[p]
+            guard var layers = profile["layers"] as? [[String: Any]] else { continue }
+            for l in layers.indices {
+                var layer = layers[l]
+                guard var layout = layer["layout"] as? [String: Any],
+                      let keymap = layout["keymap"] as? [[String]] else { continue }
+                // Only touch rows we actually bound — a layer the user set up
+                // themselves should survive untouched.
+                let bound = keymap.contains { $0.contains { $0.hasPrefix("KV_OAI_AG") } }
+                guard bound else { continue }
+                layout["keymap"] = VOAI.stockKeymap
+                layout["encoders"] = VOAI.stockEncoders
+                layer["layout"] = layout
+                layers[l] = layer
+            }
+            profile["layers"] = layers
+            profiles[p] = profile
+        }
+        config["profiles"] = profiles
+        return config
+    }
+
     // MARK: - Agent keymap
 
     /// Binds the six agent keys to `KV_OAI_AG00…AG05` on the **active** layer.

@@ -28,6 +28,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 
+    /// Never leave the board glowing a stale agent colour after we exit.
+    func applicationWillTerminate(_ notification: Notification) {
+        AppState.shared?.handBackKeyboardOnQuit()
+    }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         showConfigWindow(sender)
         return false
