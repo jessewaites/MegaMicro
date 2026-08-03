@@ -1463,6 +1463,91 @@ final class AppState {
         return frame
     }
 
+    /// The ring's colour for the active profile's underglow mode. Sent on every
+    /// tick — `setUnderglow` drops repeats, so this costs one message per
+    /// actual change, and it means the ring is restored after anything that
+    /// paints it directly (the connection test).
+    private func ambientParam(for aggregate: AgentState) -> VOAI.ZoneParam {
+        switch activeProfile.underglow {
+        case .rainbowUnlessAlert:
+            let alert = aggregate == .error || aggregate == .waiting
+            return alert
+                ? VOAI.ZoneParam(e: VOAI.Effect.solid.rawValue, b: 1, s: 0.5, m: 1, c: 0xFF0000)
+                : VOAI.ZoneParam(e: VOAI.Effect.rainbow.rawValue, b: 1, s: 0.55, m: 1, c: 0xFFFFFF)
+        case .aggregate:
+            let spec = activeProfile.rgbRules.spec(for: aggregate)
+            return VOAI.ZoneParam(e: VOAI.Effect.solid.rawValue,
+                                  b: Double(spec.color.v) / 255.0,
+                                  s: 0.5, m: 1, c: VOAI.packedRGB(spec.color))
+        case .solid(let hsv):
+            return VOAI.ZoneParam(e: VOAI.Effect.solid.rawValue,
+                                  b: Double(hsv.v) / 255.0,
+                                  s: 0.5, m: 1, c: VOAI.packedRGB(hsv))
+        case .off:
+            return .off
+        }
+    }
+
+    // MARK: Connection test
+
+    /// True while the light show owns the board, so the render loop doesn't
+    /// fight it for the LEDs.
+    var lightShowRunning = false
+
+    /// A few seconds of colour on the physical keyboard: proof the connection
+    /// works, and a demo for anyone who has not seen it light up.
+    func runConnectionTest() {
+        guard let voai = hardwareDevice as? VOAIDevice, hardwareConnected, !lightShowRunning else { return }
+        lightShowRunning = true
+        log("✨ testing the keyboard — watch the keys")
+
+        let slots = Array(VOAI.ledIndexForAgentSlot.indices)
+        func paint(_ colors: [Int: UInt32], effect: VOAI.Effect = .solid, speed: Double = 0.5) {
+            voai.sendThreads(slots.map { slot in
+                VOAI.ThreadParam(
+                    id: slot,
+                    c: colors[slot] ?? 0,
+                    b: colors[slot] == nil ? 0 : 1,
+                    e: (colors[slot] == nil ? VOAI.Effect.off : effect).rawValue,
+                    s: speed, sk: 0, sa: 0)
+            })
+        }
+        func ambient(_ effect: VOAI.Effect, _ color: UInt32, speed: Double = 0.6) {
+            voai.setUnderglow(VOAI.ZoneParam(e: effect.rawValue, b: 1, s: speed, m: 1, c: color))
+        }
+
+        Task { @MainActor [weak self] in
+            defer {
+                self?.lightShowRunning = false
+                self?.currentFrame = .uniform(.off, ledCount: CodexMicroLayout.layout.ledCount)
+            }
+            let hues: [UInt32] = [0xFF0000, 0xFF7F00, 0xFFFF00, 0x00FF00,
+                                  0x00FFFF, 0x0000FF, 0x8B00FF]
+
+            // 1. Chase a single dot across every key.
+            ambient(.off, 0)
+            for slot in slots {
+                paint([slot: hues[slot % hues.count]])
+                try? await Task.sleep(for: .milliseconds(70))
+            }
+            // 2. Everything at once, each key its own colour.
+            paint(Dictionary(uniqueKeysWithValues: slots.map { ($0, hues[$0 % hues.count]) }))
+            ambient(.rainbow, 0xFFFFFF)
+            try? await Task.sleep(for: .milliseconds(900))
+            // 3. Breathe, so the on-device animation is visible too.
+            paint(Dictionary(uniqueKeysWithValues: slots.map { ($0, UInt32(0x00AAFF)) }),
+                  effect: .breath, speed: 0.9)
+            try? await Task.sleep(for: .milliseconds(1100))
+            // 4. The colours that actually mean something day to day.
+            for (color, hold) in [(UInt32(0xFFAA00), 500), (UInt32(0xFF0000), 500), (UInt32(0x00FF00), 700)] {
+                paint(Dictionary(uniqueKeysWithValues: slots.map { ($0, color) }))
+                ambient(.solid, color)
+                try? await Task.sleep(for: .milliseconds(hold))
+            }
+            self?.log("✨ keyboard test finished")
+        }
+    }
+
     /// Pin a key to a colour, or pass nil to hand it back to agent state.
     func setPinnedColor(_ color: HSV?, forKey keyIndex: Int) {
         var settings = activeLayoutSettings
@@ -1745,6 +1830,7 @@ final class AppState {
             underglowMode: activeProfile.underglow,
             steadyGlow: config.steadyGlow,
             ledCount: layout.ledCount, t: t)
+        guard !lightShowRunning else { return }
         let pinnedFrame = applyPinnedColors(to: frame)
         let notice = makeFleetNotification(included: Array(fleetSessions), state: aggregate)
         if notice != fleetNotification {
@@ -1758,15 +1844,7 @@ final class AppState {
             device.apply(pinnedFrame)
             hardwareDevice?.apply(pinnedFrame)
         }
-        if case .rainbowUnlessAlert = activeProfile.underglow {
-            // Device-animated: one message per state change, not a colour
-            // stream. Red the moment anything errors or wants you.
-            let alert = aggregate == .error || aggregate == .waiting
-            let ambient = alert
-                ? VOAI.ZoneParam(e: VOAI.Effect.solid.rawValue, b: 1, s: 0.5, m: 1, c: 0xFF0000)
-                : VOAI.ZoneParam(e: VOAI.Effect.rainbow.rawValue, b: 1, s: 0.55, m: 1, c: 0xFFFFFF)
-            (hardwareDevice as? VOAIDevice)?.setUnderglow(ambient)
-        }
+        (hardwareDevice as? VOAIDevice)?.setUnderglow(ambientParam(for: aggregate))
     }
 
     // MARK: Physical keyboard

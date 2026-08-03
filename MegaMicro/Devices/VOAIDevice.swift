@@ -104,6 +104,18 @@ final class VOAIDevice: KeyboardDevice {
         }
     }
 
+    /// Send per-slot lighting directly, bypassing the frame pipeline. Used by
+    /// the connection test, which paints the board by hand.
+    func sendThreads(_ params: [VOAI.ThreadParam]) {
+        guard isConnected else { return }
+        requestID += 1
+        guard let message = try? VOAI.threadStatusRequest(id: requestID, params: params) else { return }
+        for report in VOAI.frames(channel: VOAI.channelRPC, message: message) {
+            try? transport.write(report)
+        }
+        lastParams = nil   // force the next real frame to re-send
+    }
+
     func sendRaw(_ report: [UInt8]) throws {
         try transport.write(report)
     }

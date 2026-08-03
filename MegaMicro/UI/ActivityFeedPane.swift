@@ -21,6 +21,35 @@ struct DashboardPane: View {
     /// accumulate (the feed itself holds up to 200).
     private let pageSize = 12
 
+    /// On/off for the physical board, where you can actually find it. Off
+    /// hands the keyboard back — lights cleared, keys typing again — so
+    /// another app (Codex, Work Louder Input) can drive it; only one host can
+    /// at a time.
+    @ViewBuilder
+    private var keyboardPowerControl: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(appState.hardwareConnected ? Color.green : Color.secondary)
+                .frame(width: 8, height: 8)
+            Text(appState.hardwareConnected ? "Keyboard on" : "Keyboard off")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Button(appState.hardwareConnected ? "Turn Off" : "Turn On") {
+                if appState.hardwareConnected {
+                    appState.disconnectHardware()
+                } else {
+                    appState.connectHardware()
+                }
+            }
+            .controlSize(.small)
+            Button(appState.lightShowRunning ? "Testing…" : "Test Connection") {
+                appState.runConnectionTest()
+            }
+            .controlSize(.small)
+            .disabled(!appState.hardwareConnected || appState.lightShowRunning)
+        }
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 16) {
             VStack(spacing: 16) {
@@ -48,10 +77,13 @@ struct DashboardPane: View {
                                         }
                                     }
                             )
-                        Label("Drag to inspect", systemImage: "move.3d")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .trailing)
+                        HStack {
+                            keyboardPowerControl
+                            Spacer()
+                            Label("Drag to inspect", systemImage: "move.3d")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     .padding(12)
                 }

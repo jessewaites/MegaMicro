@@ -86,6 +86,19 @@ struct MenuBarView: View {
             Divider()
 
             HStack {
+                Button(appState.hardwareConnected ? "Turn Off Keyboard" : "Turn On Keyboard") {
+                    if appState.hardwareConnected {
+                        appState.disconnectHardware()
+                    } else {
+                        appState.connectHardware()
+                    }
+                }
+                Spacer()
+            }
+            .buttonStyle(.borderless)
+            .font(.callout)
+
+            HStack {
                 Button(appState.demoModeEnabled ? "Stop Demo" : "Start Demo") {
                     appState.toggleDemoMode()
                 }
