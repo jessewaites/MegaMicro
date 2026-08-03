@@ -72,6 +72,12 @@ enum AnimationRenderer {
         case .aggregate: aggregateColor
         case .solid(let hsv): hsv
         case .off: .off
+        case .rainbowUnlessAlert:
+            // The hardware animates its own rainbow; this is the on-screen
+            // mirror of it, so the window matches the board.
+            (aggregate == .error || aggregate == .waiting)
+                ? aggregateColor
+                : HSV(h: UInt8(Int(t * 40) % 256), s: 255, v: 200)
         }
         return EffectFrame(perLED: leds, wholeBoard: aggregateColor, underglow: underglow, perLEDSpecs: specs)
     }

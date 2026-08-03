@@ -298,6 +298,7 @@ final class AppState {
     /// update when a branch resolves or changes.
     var cwdBranches: [String: String] = [:]
     @ObservationIgnored private var branchProbedAt: [String: Date] = [:]
+    @ObservationIgnored private var lastJoystickGesture: ControlGesture?
     @ObservationIgnored private let branchTTL: TimeInterval = 10
 
     /// Current git branch for an agent cwd / bound folder, or nil when it isn't
@@ -759,6 +760,27 @@ final class AppState {
         startInputDebugMonitor()
         restoreRoster()
         applyAppearance()
+        if !disabled.contains("hardware") { autoConnectHardware() }
+    }
+
+    /// Grab the keyboard at launch. Requiring a trip to Diagnostics to press
+    /// "Go Live" makes a working setup look broken, so connect on our own and
+    /// fall back to the normal reconnect loop when the board isn't there yet
+    /// (still booting, or a cable plugged in a moment later).
+    private func autoConnectHardware() {
+        Task { @MainActor [weak self] in
+            // A beat of headroom: on a cold launch the HID interface can still
+            // be enumerating, and a failed first grab would start the backoff
+            // for no reason.
+            try? await Task.sleep(for: .milliseconds(400))
+            guard let self, !self.hardwareConnected, !self.hardwareReleased else { return }
+            if self.attemptConnect() {
+                self.hardwareConnected = true
+                return
+            }
+            self.log("no keyboard yet — watching for it")
+            self.scheduleReconnect()
+        }
     }
 
     func setAppearance(_ value: String) {
@@ -1390,7 +1412,14 @@ final class AppState {
 
     // MARK: Input
 
-    func controlActivated(_ control: ControlID, gesture: ControlGesture, phase: PressPhase = .down) {
+    /// `fromHardware` marks a real press on the pad. Edit mode is about
+    /// clicking the on-screen keyboard to rebind it — it must never stop the
+    /// physical keys from doing their job, or the pad goes dead whenever the
+    /// Keyboard pane is open (and it opens in Edit mode by default).
+    func controlActivated(_ control: ControlID,
+                          gesture: ControlGesture,
+                          phase: PressPhase = .down,
+                          fromHardware: Bool = false) {
         // The six agent keys are navigation controls whenever an agent is
         // assigned. Their purpose is to jump to that live session, independent
         // of whichever shortcut profile happens to be active.
@@ -1400,7 +1429,7 @@ final class AppState {
            focusAgent(onSlot: slot) {
             return
         }
-        if editMode {
+        if editMode && !fromHardware {
             if phase == .down {
                 editTarget = EditTarget(control: control, gesture: gesture)
             }
@@ -1410,6 +1439,71 @@ final class AppState {
                 log("\(control.rawValue).\(gesture.rawValue) → \(action.summary)")
             }
             dispatch(action, phase: phase)
+        }
+    }
+
+    /// Overwrites any key the user has pinned to a fixed colour. Applied after
+    /// rendering so a pinned key is immune to agent state, animation, and the
+    /// aggregate — it just sits there being the colour you asked for.
+    private func applyPinnedColors(to frame: EffectFrame) -> EffectFrame {
+        let pinned = activeLayoutSettings.keyColors
+        guard !pinned.isEmpty else { return frame }
+        var frame = frame
+        for (keyIndex, color) in pinned {
+            guard let led = layout.controls
+                .first(where: { $0.id == .key(keyIndex) })?.ledIndex else { continue }
+            frame.perLEDSpecs[led] = LEDSpec(color: color, kind: .solid)
+            if led < frame.perLED.count { frame.perLED[led] = color }
+        }
+        return frame
+    }
+
+    /// Pin a key to a colour, or pass nil to hand it back to agent state.
+    func setPinnedColor(_ color: HSV?, forKey keyIndex: Int) {
+        var settings = activeLayoutSettings
+        if let color {
+            settings.keyColors[keyIndex] = color
+        } else {
+            settings.keyColors.removeValue(forKey: keyIndex)
+        }
+        activeLayoutSettings = settings
+    }
+
+    // MARK: Joystick
+
+    /// The stick streams position continuously while held, so a raw dispatch
+    /// would fire hundreds of times. One step per push instead: fire when the
+    /// direction changes, and re-arm only after the stick returns near centre.
+    private func handleJoystick(angle: Double, distance: Double) {
+        let engage = 0.55
+        let release = 0.30
+
+        if distance < release {
+            lastJoystickGesture = nil
+            return
+        }
+        guard distance >= engage else { return }
+        guard let gesture = AppState.joystickGesture(forAngle: angle) else { return }
+        guard gesture != lastJoystickGesture else { return }
+        lastJoystickGesture = gesture
+        log("🕹 joystick \(gesture.rawValue)")
+        controlActivated(.joystick, gesture: gesture, phase: .down, fromHardware: true)
+        controlActivated(.joystick, gesture: gesture, phase: .up, fromHardware: true)
+    }
+
+    /// Angle is normalised 0–1 around the circle, with UP at 0.75 on this
+    /// hardware (measured: up ≈ 0.76, right ≈ 0.00). Rotating by a quarter
+    /// turn puts up at 0. Quadrant boundaries sit on the diagonals so a push
+    /// that isn't perfectly straight still resolves.
+    static func joystickGesture(forAngle angle: Double) -> ControlGesture? {
+        let a = (angle + 0.25).truncatingRemainder(dividingBy: 1.0)
+        let normalised = a < 0 ? a + 1 : a
+        switch normalised {
+        case ..<0.125, 0.875...: return .up
+        case ..<0.375: return .right
+        case ..<0.625: return .down
+        case ..<0.875: return .left
+        default: return nil
         }
     }
 
@@ -1646,17 +1740,27 @@ final class AppState {
             underglowMode: activeProfile.underglow,
             steadyGlow: config.steadyGlow,
             ledCount: layout.ledCount, t: t)
+        let pinnedFrame = applyPinnedColors(to: frame)
         let notice = makeFleetNotification(included: Array(fleetSessions), state: aggregate)
         if notice != fleetNotification {
             fleetNotification = notice
             dashboard.fleetNotification = notice
         }
-        mirrorDashboard(frame: frame, rules: rules)
-        if frame != currentFrame || renderedFleetState != aggregate {
+        mirrorDashboard(frame: pinnedFrame, rules: rules)
+        if pinnedFrame != currentFrame || renderedFleetState != aggregate {
             renderedFleetState = aggregate
-            currentFrame = frame
-            device.apply(frame)
-            hardwareDevice?.apply(frame)
+            currentFrame = pinnedFrame
+            device.apply(pinnedFrame)
+            hardwareDevice?.apply(pinnedFrame)
+        }
+        if case .rainbowUnlessAlert = activeProfile.underglow {
+            // Device-animated: one message per state change, not a colour
+            // stream. Red the moment anything errors or wants you.
+            let alert = aggregate == .error || aggregate == .waiting
+            let ambient = alert
+                ? VOAI.ZoneParam(e: VOAI.Effect.solid.rawValue, b: 1, s: 0.5, m: 1, c: 0xFF0000)
+                : VOAI.ZoneParam(e: VOAI.Effect.rainbow.rawValue, b: 1, s: 0.55, m: 1, c: 0xFFFFFF)
+            (hardwareDevice as? VOAIDevice)?.setUnderglow(ambient)
         }
     }
 
@@ -1710,6 +1814,21 @@ final class AppState {
             hardwareConnected = true
             hardwareName = "Codex Micro / Creator Micro 2"
             log("🔌 connected: Codex Micro family (v.oai protocol) — lights are live")
+            // Per-key colour only renders on keys bound to KV_OAI_AG00…AG05 on
+            // the active layer. Without this the firmware still answers "ok"
+            // and lights nothing, so bind them before we start sending frames.
+            voai.ensureAgentKeymap { [weak self] result in
+                Task { @MainActor in
+                    switch result {
+                    case .success(true):
+                        self?.log("⌨️ bound the six agent keys for per-key colour (they no longer type)")
+                    case .success(false):
+                        break   // already bound
+                    case .failure(let error):
+                        self?.log("⚠️ could not bind agent keys — per-key colour will not show: \(error.localizedDescription)")
+                    }
+                }
+            }
             return true
         }
         let via = VIAHIDDevice(layout: layout)
@@ -1803,16 +1922,39 @@ final class AppState {
     /// hardware validates the exact semantics.
     private func handleDeviceEvent(_ event: VOAI.DeviceEvent) {
         switch event {
-        case .key(let index, let action):
-            log("⌨︎ pad key \(index)\(action.map { " (\($0))" } ?? "")")
-            controlActivated(.key(index), gesture: .press, phase: .down)
-            controlActivated(.key(index), gesture: .press, phase: .up)
+        case .key(let slot, let action):
+            // The device reports agent *slots* ("AG07"), which are not key
+            // indices — AG07 is key 11. Translate before dispatching.
+            let mapped = VOAI.keyIndex(forAgentSlot: slot)
+            // A known slot mapped to nil is the second switch under the wide
+            // key — drop it so one press fires one action.
+            if mapped == nil, VOAI.agentSlotKeyIndices.indices.contains(slot) { return }
+            let index = mapped ?? slot
+            log("⌨︎ pad key \(index) (slot \(slot))\(action.map { " act \($0)" } ?? "")")
+            switch action {
+            case "1":
+                controlActivated(.key(index), gesture: .press, phase: .down, fromHardware: true)
+            case "0":
+                controlActivated(.key(index), gesture: .press, phase: .up, fromHardware: true)
+            default:
+                // No action field: synthesise a complete press so the binding
+                // still fires, accepting that hold-to-talk cannot work.
+                controlActivated(.key(index), gesture: .press, phase: .down, fromHardware: true)
+                controlActivated(.key(index), gesture: .press, phase: .up, fromHardware: true)
+            }
         case .joystick(let angle, let distance):
-            log("🕹 joystick angle \(Int(angle))° distance \(String(format: "%.2f", distance))")
+            handleJoystick(angle: angle, distance: distance)
         case .debug(let text):
-            log("keyboard says: \(text)")
+            // The firmware emits empty debug frames constantly; only surface
+            // the ones that actually say something.
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { log("keyboard says: \(trimmed)") }
         case .other(let method):
-            log("keyboard message: \(method)")
+            // Replies to our own fire-and-forget lighting writes come back as
+            // unclaimed messages. They mean "accepted", not "unrecognised".
+            let acknowledgements = [VOAI.methodThreadStatus, VOAI.methodRGBConfig,
+                                    VOAI.methodLightsPreview]
+            if !acknowledgements.contains(method) { log("keyboard message: \(method)") }
         }
     }
 

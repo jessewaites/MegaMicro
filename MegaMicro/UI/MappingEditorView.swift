@@ -13,6 +13,8 @@ struct MappingEditorView: View {
         case openURL = "Open URL"
         case shell = "Shell Command"
         case typeText = "Type Text"
+        case runSkill = "Run Skill"
+        case slashCommand = "Claude Command"
         case switchProfile = "Switch Profile"
         case cycleProfile = "Cycle Profiles"
         case none = "Nothing"
@@ -24,6 +26,10 @@ struct MappingEditorView: View {
     @State private var modifiers: Modifiers = []
     @State private var text = ""
     @State private var profileID = ""
+    @State private var skillName = ""
+    @State private var skills: [Skill] = []
+    @State private var pinColor = false
+    @State private var pinnedColor = Color.red
     @State private var keyLabel = ""
     @State private var recording = false
     @State private var recordMonitor: Any?
@@ -77,6 +83,36 @@ struct MappingEditorView: View {
             case .typeText:
                 TextField("y⏎ (use \\r for return)", text: $text)
                     .textFieldStyle(.roundedBorder)
+            case .runSkill:
+                if skills.isEmpty {
+                    Text("No skills found in ~/.claude/skills or this project's .claude/skills.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Picker("Skill", selection: $skillName) {
+                        ForEach(skills) { skill in
+                            Text(skill.isPersonal ? "/\(skill.name)" : "/\(skill.name)  ·  \(skill.projectName ?? "")")
+                                .tag(skill.name)
+                        }
+                    }
+                }
+                TextField("or type a slash command name", text: $skillName)
+                    .textFieldStyle(.roundedBorder)
+                if let match = skills.first(where: { $0.name == skillName }), !match.summary.isEmpty {
+                    Text(match.summary).font(.caption).foregroundStyle(.secondary)
+                }
+                Text("Types the slash command into whatever app is in front and presses return, exactly as if you'd typed it.")
+                    .font(.caption).foregroundStyle(.secondary)
+            case .slashCommand:
+                Picker("Command", selection: $skillName) {
+                    ForEach(ClaudeCommands.all) { command in
+                        Text("/\(command.name)").tag(command.name)
+                    }
+                }
+                if let match = ClaudeCommands.all.first(where: { $0.name == skillName }) {
+                    Text(match.summary).font(.caption).foregroundStyle(.secondary)
+                }
+                Text("Claude Code's own commands. /model opens the model picker — pair it with the dial to scroll the list.")
+                    .font(.caption).foregroundStyle(.secondary)
             case .switchProfile:
                 Picker("Profile", selection: $profileID) {
                     ForEach(appState.config.profiles) { Text($0.name).tag($0.id) }
@@ -89,6 +125,16 @@ struct MappingEditorView: View {
             }
 
             if target.gesture == .press, target.control.rawValue.hasPrefix("key.") {
+                Divider()
+                Toggle("Always this colour", isOn: $pinColor)
+                if pinColor {
+                    ColorPicker("Key colour", selection: $pinnedColor, supportsOpacity: false)
+                    Text("This key ignores agent state and stays the colour you pick — for keys that run a command rather than host an agent.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text("This key follows the state of whatever agent is assigned to it.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Divider()
                 Text("Key glyph — match whatever physical keycap is on this key:")
                     .font(.callout)
@@ -106,7 +152,16 @@ struct MappingEditorView: View {
         }
         .padding(20)
         .frame(width: 420)
-        .onAppear(perform: loadCurrent)
+        .onAppear {
+            loadCurrent()
+            // Personal skills plus any project the live agents are working in,
+            // so a key can be bound to a project-scoped skill.
+            let projects = Set(appState.sessionStore.sessions.values.compactMap(\.cwd)).map { URL(fileURLWithPath: $0) }
+            skills = SkillCatalog.discover(projectDirectories: projects)
+            if skillName.isEmpty {
+                skillName = actionType == .slashCommand ? "model" : (skills.first?.name ?? "")
+            }
+        }
         .onDisappear(perform: stopRecording)
     }
 
@@ -157,6 +212,9 @@ struct MappingEditorView: View {
         case .typeText(let value):
             actionType = .typeText
             text = value.replacingOccurrences(of: "\r", with: "\\r").replacingOccurrences(of: "\u{1B}", with: "\\e")
+        case .runSkill(let name):
+            actionType = ClaudeCommands.contains(name) ? .slashCommand : .runSkill
+            skillName = name
         case .switchProfile(let id):
             actionType = .switchProfile; profileID = id
         case .cycleProfile:
@@ -166,6 +224,14 @@ struct MappingEditorView: View {
         }
         if profileID.isEmpty { profileID = appState.config.profiles.first?.id ?? "" }
         keyLabel = appState.activeLayoutSettings.keyLegends[target.control] ?? ""
+        if let index = Int(target.control.rawValue.dropFirst("key.".count)),
+           let existing = appState.activeLayoutSettings.keyColors[index] {
+            pinColor = true
+            let rgb = existing.rgb
+            pinnedColor = Color(red: rgb.r, green: rgb.g, blue: rgb.b)
+        } else {
+            pinColor = false
+        }
     }
 
     private func save() {
@@ -184,6 +250,8 @@ struct MappingEditorView: View {
                 .replacingOccurrences(of: "\\r", with: "\r")
                 .replacingOccurrences(of: "\\e", with: "\u{1B}")
             action = .typeText(unescaped)
+        case .runSkill, .slashCommand:
+            action = .runSkill(name: skillName.trimmingCharacters(in: CharacterSet(charactersIn: "/ ")))
         case .switchProfile:
             action = .switchProfile(profileID)
         case .cycleProfile:
@@ -192,6 +260,15 @@ struct MappingEditorView: View {
             action = .none
         }
         appState.setAction(action, for: target.control, gesture: target.gesture)
+        if let index = Int(target.control.rawValue.dropFirst("key.".count)) {
+            if pinColor, let rgb = NSColor(pinnedColor).usingColorSpace(.deviceRGB) {
+                appState.setPinnedColor(HSV(r: rgb.redComponent,
+                                            g: rgb.greenComponent,
+                                            b: rgb.blueComponent), forKey: index)
+            } else {
+                appState.setPinnedColor(nil, forKey: index)
+            }
+        }
         let trimmed = keyLabel.trimmingCharacters(in: .whitespaces)
         if trimmed.isEmpty {
             appState.activeLayoutSettings.keyLegends.removeValue(forKey: target.control)

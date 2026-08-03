@@ -2,24 +2,35 @@
 
 Your **Agent Keys** light up to reflect the live state of the task each agent is running —
 thinking, waiting on you, finished, or errored — so a single glance at your keyboard tells you
-exactly where everything stands. It works on both the **Codex Micro** and the **Creator Micro**
-by Work Louder. And don't let the playful colors fool you: this is a serious tool for real work,
-just with a little more personality than your average one.
+exactly where everything stands. And don't let the playful colors fool you: this is a serious
+tool for real work, just with a little more personality than your average one.
+
+**Per-key RGB works on a stock Work Louder Creator Micro 2.** Each of the thirteen keys takes
+its own colour from the agent assigned to it — not one aggregate colour for the whole board.
+This was widely believed to be impossible on the Creator Micro 2 and locked to the OpenAI Codex
+Micro; it isn't. See [How per-key lighting works](#how-per-key-lighting-works) for the mechanism
+and the one trade-off it carries.
 
 MegaMicro is a native Apple-platform app — a **general-purpose RGB AI keyboard configurator**
 that maps live AI coding-agent activity onto a keyboard's RGB lighting and keys, turning it into
 a physical command center for local AI agents. Assign agents to keys, see their state through RGB
 lighting, jump to the agent that needs attention, and monitor a fleet without repeatedly searching
-through terminal and editor windows. It ships with first-class support for the **OpenAI Codex Micro
-by Work Louder** and drives other Work Louder boards through a device-agnostic layout model.
+through terminal and editor windows. It ships with first-class support for the **Work Louder
+Creator Micro 2** — including per-key RGB — and drives other Work Louder boards, such as the
+OpenAI Codex Micro, through a device-agnostic layout model.
 Companion apps bring the live dashboard to iPhone, iPad, and Apple Watch.
 
 > [!IMPORTANT]
 > MegaMicro is a general-purpose RGB AI keyboard configurator: it maps live AI-agent activity to
 > per-key lighting and actions, driven by a device-agnostic layout model. It runs on **macOS 14 or
-> later** and connects over **USB-C** (Bluetooth is untested). Hardware support currently ships for
-> **Work Louder boards** — the OpenAI Codex Micro / Creator Micro 2 (`v.oai`) and Creator Micro v1
-> (`VIA`) — with more boards addable through the same layout model.
+> later** and connects over **USB-C** (Bluetooth is untested).
+>
+> The **Work Louder Creator Micro 2** (`303A:8297`) is the primary, fully verified device —
+> per-key colour, key input, dial, and joystick are all working and tested on real hardware with
+> firmware **v0.6.1**. The **OpenAI Codex Micro** (`303A:8360`) shares the same firmware family and
+> is matched by the same code path, but has not been tested on hardware. The original **Creator
+> Micro v1** is supported through the separate `VIA` backend. More boards are addable through the
+> same layout model.
 
 ![MegaMicro mirrored across the Codex Micro, iPhone, and Apple Watch — an agent needs attention, so the board, phone, and watch all glow red.](Assets/screenshots/hero.png)
 
@@ -28,7 +39,7 @@ Companion apps bring the live dashboard to iPhone, iPad, and Apple Watch.
 ## What it does
 
 - Assigns individual agent sessions to physical keys using drag and drop.
-- Shows agent states on the on-screen keyboard and the Codex Micro LEDs.
+- Shows agent states on the on-screen keyboard and on the keyboard's LEDs, one colour per key.
 - Uses concise, human-readable states: thinking, working, waiting, finished, and error.
 - Offers optional macOS notifications for agents that need input, fail, or finish; notifications
   are disabled by default so the keyboard remains the primary attention surface. Demo Mode can
@@ -111,7 +122,9 @@ and application focusing; prompts and source code are not sent to the companion 
 ### To run the app
 
 - A Mac running macOS 14 Sonoma or later
-- OpenAI Codex Micro by Work Louder
+- A Work Louder **Creator Micro 2** (or OpenAI Codex Micro), on firmware **v0.4.0 or later** —
+  v0.6.1 is what this is tested against. Older firmware such as v0.1.40 has no lighting API at
+  all and every call returns "method not found"; see [Update the firmware, then quit Input](#2-update-the-firmware-then-quit-input).
 - A USB-C data cable
 - At least one supported local coding agent
 
@@ -175,30 +188,66 @@ If System Settings shows a permission as enabled but MegaMicro still reports it 
 remove the old MegaMicro entry with the `−` button, add the current app with `+`, and enable
 it again.
 
-### 2. Configure the Codex Micro
+### 2. Update the firmware, then quit Input
 
-Using Work Louder Input, map the physical controls to MegaMicro's default triggers:
+Install [Work Louder Input](https://worklouder.cc/input) and let it update the keyboard to
+firmware **v0.4.0 or later** (v0.6.1 is what this is tested against). This step is not optional
+on older boards: firmware v0.1.40 has no lighting API at all — every lighting call returns
+`Method not found` — so the keys simply never light and nothing explains why.
 
-| Control | Default trigger |
-|---|---|
-| Thirteen button controls, including the touch button | F13–F20, then Hyper + F13–F17 |
-| Dial press, clockwise, counterclockwise | Hyper + F18/F19/F20 |
-| Joystick directions | Control + Option + Command + F13–F16 |
+During the update the pad reboots into its ESP32 bootloader and macOS asks **"Allow accessory to
+connect?"** twice, first for *Espressif USB JTAG/serial debug unit*, then for *Work Louder Creator
+Micro 2*. Allow both, and leave the cable plugged in until it finishes.
 
-`Hyper` means Control + Option + Shift + Command.
+> [!IMPORTANT]
+> **Quit Work Louder Input before starting MegaMicro**, and keep the ChatGPT/Codex desktop app
+> closed too. Only one host can drive the keyboard's JSON-RPC channel at a time. Two hosts
+> interleave their message fragments on the same channel and corrupt each other, which shows up
+> as lighting that silently does nothing rather than as an error.
 
-Quit Work Louder Input after configuring the device. It may retain access to the same hardware
-interface MegaMicro needs for lighting and input reports.
+macOS may also show its own **Keyboard Setup Assistant** when the board is first plugged in,
+because the pad enumerates as a real keyboard. Click **Quit** — it is unrelated to MegaMicro, and
+"Continue" leads nowhere since the pad has no Shift keys to identify.
 
-### 3. Connect and test the keyboard
+### 3. Connect the keyboard
 
-1. Connect the Codex Micro directly over USB-C.
-2. Open **Diagnostics**.
-3. Select **Run Hardware Probe**.
-4. Review the detected product and protocol.
-5. Select **Connect Keyboard (Go Live)**.
+**MegaMicro connects on its own at launch.** There is nothing to click. If the board is not
+plugged in yet, it keeps watching and grabs it when it appears.
 
-The probe is read-only unless you explicitly choose the red test-write option.
+On connect, MegaMicro programs the keyboard's active layer for you:
+
+- The thirteen keys are bound to `KV_OAI_AG00`–`KV_OAI_AG12`, which is what makes per-key colour
+  work (see [How per-key lighting works](#how-per-key-lighting-works)).
+- The dial moves from volume control to `F18`/`F19`/`F20`, so it drives the mapped dial actions.
+- Any per-layer lighting block left behind by another app is cleared, because a layer that
+  carries its own lighting config ignores everything the host sends.
+
+Your other layers are untouched. The bottom-left round button still switches layers in firmware,
+so the stock behaviour — including the volume dial — remains one layer away.
+
+To verify or troubleshoot, open **Diagnostics** and select **Run Hardware Probe**. The probe is
+read-only. **Connect Keyboard (Go Live)** and **Release for Editing** are still there for
+reconnecting manually or handing the board back to Input.
+
+### How per-key lighting works
+
+Per-key colour on the Creator Micro 2 needs three things at once, and the firmware reports no
+error when any of them is missing — every call still answers `{"ok":1}` while lighting nothing.
+That combination is why this was widely assumed to be impossible:
+
+1. **Firmware v0.4.0+.** Earlier builds do not implement the lighting methods at all.
+2. **Keys bound to `KV_OAI_AG*` keycodes on the *active* layer.** Bindings parked on another
+   layer do nothing. MegaMicro reads `device.status` to find the live layer and writes there.
+3. **Per-thread colours sent with the sync flags explicitly cleared.** Those fields latch on the
+   device, so one stale "sync keys" flag from any previous app keeps washing the whole board in a
+   single colour and quietly defeats per-key output.
+
+**The trade-off:** a key bound to an agent keycode no longer types a character. It reports itself
+to MegaMicro instead, which is what lets the app decide what each key does. In practice this is an
+upgrade — no stray letters leak into whatever window has focus, and any key can run a skill, a
+slash command, or a shortcut — but it does mean **those keys only work while MegaMicro is
+running**. To hand the board back to Input or Codex, use **Release for Editing** in Diagnostics
+and restore your keymap there.
 
 ### 4. Install agent integrations
 
@@ -293,7 +342,7 @@ screens to customize the experience.
 
 Hardware layers and MegaMicro profiles are separate:
 
-- A **hardware layer** controls which events the Codex Micro firmware emits.
+- A **hardware layer** controls which events the keyboard firmware emits.
 - A **MegaMicro profile** controls what this Mac does when it receives those events.
 
 The bottom-left round button changes the keyboard layer in the stock firmware. MegaMicro also
@@ -403,7 +452,7 @@ intermediate binary directly.
 - Confirm the cable carries data, not power only.
 - Quit Work Louder Input so it releases the device interface.
 - Grant Input Monitoring.
-- Run Diagnostics → Hardware Probe and copy the resulting report.
+- Run Diagnostics → Run Hardware Probe and copy the resulting report.
 
 ### The keyboard goes dead after editing layers in another app
 
@@ -551,8 +600,14 @@ local webhook. We also welcome new *sources*, especially ones that report state 
 ## Current project status
 
 MegaMicro is an early-stage project. The software simulator, agent state engine, integrations,
-and configuration UI are functional. Physical Codex Micro behavior should still be considered
-experimental until it has been exercised across production hardware and firmware revisions.
+and configuration UI are functional.
+
+Physical hardware support is verified on a **Creator Micro 2 (`303A:8297`) running firmware
+v0.6.1**: per-key colour, key presses, the dial, and the joystick have all been exercised on real
+hardware. Treat other combinations as experimental — in particular the **OpenAI Codex Micro**
+(`303A:8360`), which shares the firmware family and the same code path but has not been tested on
+a physical unit, and **Bluetooth**, which is untested throughout. Behaviour across other firmware
+revisions has not been surveyed.
 
 Bug reports should include:
 

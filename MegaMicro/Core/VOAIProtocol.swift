@@ -83,15 +83,76 @@ enum VOAI {
 
     // MARK: RPC
 
-    /// Per-key lighting for the agent keys (ids 0–5).
+    /// Per-key lighting, one entry per agent slot.
     /// Optionals are omitted from the JSON entirely.
+    ///
+    /// IMPORTANT: omitted fields *latch* on the device — they keep whatever
+    /// value they had. A stale `sk: 1` from an earlier call keeps washing the
+    /// whole keys zone with one thread's colour and silently defeats per-key
+    /// lighting, so we always send `sk`/`sa` explicitly.
     struct ThreadParam: Codable, Hashable, Sendable {
         var id: Int
         var c: UInt32?     // packed 0xRRGGBB
         var b: Double?     // brightness 0–1
         var e: UInt8?      // effect (see Effect)
         var s: Double?     // speed 0–1
+        var sk: UInt8?     // syncKeysLighting  (1 = wash whole keys zone)
+        var sa: UInt8?     // syncAmbientLighting
     }
+
+    /// The six agent keys must be bound to these keycodes **on the active
+    /// layer** before per-key lighting renders. Without them the firmware
+    /// still answers `{"ok":1}` to every thstatus call and lights nothing —
+    /// there is no error to detect, so verify the keymap, not the response.
+    static let agentKeycodes = (0..<13).map { String(format: "KV_OAI_AG%02d", $0) }
+
+    /// Parses "AG03" (as sent in `v.oai.hid` notifications) into a slot index.
+    static func agentSlot(fromKeyName name: String) -> Int? {
+        guard name.hasPrefix("AG"), let n = Int(name.dropFirst(2)) else { return nil }
+        return n
+    }
+
+    /// Physical key index for each agent slot — the slot number is NOT the key
+    /// index. Slots 0–5 are the top two rows (keys 0–5).
+    ///
+    /// The bottom row is not 1:1: the wide key spans TWO switches, so slots 6
+    /// and 7 both belong to key 11 and a single press reports both. Slot 6 is
+    /// mapped to nil so the press dispatches once instead of twice; it still
+    /// takes colour (see `agentSlots(forKeyIndex:)`).
+    static let agentSlotKeyIndices: [Int?] = [0, 1, 2, 3, 4, 5, nil, 11, 12, 6, 7, 8, 9]
+
+    static func keyIndex(forAgentSlot slot: Int) -> Int? {
+        guard agentSlotKeyIndices.indices.contains(slot) else { return nil }
+        return agentSlotKeyIndices[slot]
+    }
+
+    /// Every slot that lights a given key. The wide key needs both of its
+    /// switches set to the same colour to look uniform.
+    static func agentSlots(forKeyIndex key: Int) -> [Int] {
+        if key == 11 { return [6, 7] }
+        return agentSlotKeyIndices.indices.filter { agentSlotKeyIndices[$0] == key }
+    }
+
+    /// LED index each agent slot draws its colour from. Slots 6 and 7 share
+    /// LED 10 so both halves of the wide key light the same.
+    static let ledIndexForAgentSlot = [0, 1, 2, 3, 4, 5, 10, 10, 11, 6, 7, 8, 9]
+
+    /// Keycodes the dial sends after MegaMicro programs it. These must match
+    /// the dial entries in `DefaultTriggers`, and must be F20 or below —
+    /// macOS has no virtual keycode for F21 and up, so those arrive nowhere.
+    static let dialClockwise = "KC_F19"
+    static let dialCounterclockwise = "KC_F20"
+    static let dialPress = "KC_F18"
+
+    /// Which keymap positions get agent keycodes: (row, first position, slots).
+    ///
+    /// All 13 keys are bound: an unbound key sends a raw letter (KC_G and
+    /// friends) that MegaMicro cannot see, so it would type into whatever is
+    /// focused instead of running its action. The bottom-left layer button is
+    /// NOT in the keymap — the firmware handles it — so row 3 is safe too.
+    static let agentRows: [(row: Int, position: Int, slots: Range<Int>)] = [
+        (0, 0, 0..<2), (1, 0, 2..<6), (3, 0, 6..<9), (2, 0, 9..<13),
+    ]
 
     enum Effect: UInt8 {
         case off = 0, solid = 1, snake = 2, rainbow = 3
@@ -99,11 +160,20 @@ enum VOAI {
     }
 
     static let methodThreadStatus = "v.oai.thstatus"
-    static let methodRGBConfig = "v.oai.rgbcfg"      // reserved by firmware, unimplemented
+    /// Ambient ring + key backlight. Live once the layer is agent-bound; it is
+    /// `lights.preview` that goes inert in that mode, not this.
+    static let methodRGBConfig = "v.oai.rgbcfg"
+    /// Whole-device lighting: the two global surfaces. Works on fw ≥ 0.4.
+    static let methodLightsPreview = "lights.preview"
+    static let methodDeviceStatus = "device.status"
+    static let methodFSRead = "fs.read"
+    static let methodFSWrite = "fs.write"
     static let notifyHID = "v.oai.hid"
     static let notifyJoystick = "v.oai.rad"
+    /// Older/base firmware names the joystick notification differently.
+    static let notifyJoystickLegacy = "kb.radial"
 
-    /// Compact JSON request. Ids cycle 0–999 per the kit convention.
+    /// Compact JSON request. Ids cycle 0–999 — the firmware ignores ids ≥ 1000.
     static func threadStatusRequest(id: Int, params: [ThreadParam]) throws -> Data {
         struct Request: Encodable {
             let id: Int
@@ -115,6 +185,79 @@ enum VOAI {
         return try encoder.encode(Request(id: id % 1000, method: methodThreadStatus, params: params))
     }
 
+    /// One of the two global lighting surfaces driven by `lights.preview`.
+    struct SurfaceParam: Codable, Hashable, Sendable {
+        var effect: String          // "off" | "solid" | "breath" | "rainbow" | …
+        var brightness: Double      // 0–1
+        var speed: Double           // 0–1
+        var magic: Double
+        var color: UInt32           // packed 0xRRGGBB
+
+        static let off = SurfaceParam(effect: "off", brightness: 0, speed: 0, magic: 1, color: 0)
+    }
+
+    /// One lighting zone for `v.oai.rgbcfg`. Unlike `lights.preview`, this
+    /// takes the **numeric** effect enum, not effect names.
+    struct ZoneParam: Codable, Hashable, Sendable {
+        var e: UInt8       // Effect
+        var b: Double      // brightness 0–1
+        var s: Double      // speed 0–1
+        var m: Double      // "magic"
+        var c: UInt32      // packed 0xRRGGBB
+
+        static let off = ZoneParam(e: Effect.off.rawValue, b: 0, s: 0, m: 1, c: 0)
+    }
+
+    /// Ambient ring + key backlight, the OAI-mode counterpart to `thstatus`.
+    ///
+    /// This — not `lights.preview` — is what drives lighting once the layer's
+    /// keys are bound to `KV_OAI_AG*`. In that mode the firmware owns the LEDs
+    /// and ignores `lights.preview` entirely, which is why the preview call
+    /// silently does nothing on an agent-bound layer.
+    static func rgbConfigRequest(id: Int, ambient: ZoneParam, keys: ZoneParam) throws -> Data {
+        struct Params: Encodable { let ambient: ZoneParam; let keys: ZoneParam }
+        struct Request: Encodable { let id: Int; let method: String; let params: Params }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        return try encoder.encode(Request(id: id % 1000,
+                                          method: methodRGBConfig,
+                                          params: Params(ambient: ambient, keys: keys)))
+    }
+
+    static func lightsPreviewRequest(id: Int, backlight: SurfaceParam, underglow: SurfaceParam) throws -> Data {
+        struct Params: Encodable { let backlight: SurfaceParam; let underglow: SurfaceParam }
+        struct Request: Encodable { let id: Int; let method: String; let params: Params }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        return try encoder.encode(Request(id: id % 1000,
+                                          method: methodLightsPreview,
+                                          params: Params(backlight: backlight, underglow: underglow)))
+    }
+
+    /// `fs.read` / `fs.write` move whole JSON documents (the keymap), unlike
+    /// the chunked `fs.readbin`/`fs.writebin` pair.
+    static func deviceStatusRequest(id: Int) throws -> Data {
+        struct Request: Encodable { let id: Int; let method: String }
+        return try JSONEncoder().encode(Request(id: id % 1000, method: methodDeviceStatus))
+    }
+
+    static func fsReadRequest(id: Int, file: String) throws -> Data {
+        struct Params: Encodable { let file: String }
+        struct Request: Encodable { let id: Int; let method: String; let params: Params }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.withoutEscapingSlashes]
+        return try encoder.encode(Request(id: id % 1000, method: methodFSRead, params: Params(file: file)))
+    }
+
+    static func fsWriteRequest(id: Int, file: String, data: String) throws -> Data {
+        struct Params: Encodable { let file: String; let data: String }
+        struct Request: Encodable { let id: Int; let method: String; let params: Params }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.withoutEscapingSlashes]
+        return try encoder.encode(Request(id: id % 1000, method: methodFSWrite,
+                                          params: Params(file: file, data: data)))
+    }
+
     // MARK: Incoming events
 
     enum DeviceEvent: Equatable {
@@ -124,18 +267,32 @@ enum VOAI {
         case other(method: String)
     }
 
+    /// Device→host **notifications** use the abbreviated envelope `{"m":…,"p":…}`;
+    /// only *responses* use `method`/`params`. Matching on `method` alone drops
+    /// every key and joystick event and makes the agent keys look inert.
     static func parseMessage(channel: UInt8, message: Data) -> DeviceEvent? {
         if channel == channelDebug {
             return .debug(String(decoding: message, as: UTF8.self))
         }
         guard let object = try? JSONSerialization.jsonObject(with: message) as? [String: Any],
-              let method = object["method"] as? String else { return nil }
-        let params = object["params"] as? [String: Any] ?? [:]
+              let method = (object["m"] as? String) ?? (object["method"] as? String)
+        else { return nil }
+        let params = (object["p"] as? [String: Any]) ?? (object["params"] as? [String: Any]) ?? [:]
         switch method {
         case notifyHID:
-            guard let key = params["k"] as? Int else { return .other(method: method) }
-            return .key(index: key, action: params["act"] as? String)
-        case notifyJoystick:
+            // `k` is a key *name* ("AG01") on current firmware; older builds
+            // sent a bare index.
+            let index: Int?
+            if let name = params["k"] as? String {
+                index = agentSlot(fromKeyName: name)
+            } else {
+                index = params["k"] as? Int
+            }
+            guard let index else { return .other(method: method) }
+            // `act` is numeric (1 = down) on current firmware.
+            let action = (params["act"] as? String) ?? (params["act"] as? Int).map(String.init)
+            return .key(index: index, action: action)
+        case notifyJoystick, notifyJoystickLegacy:
             let angle = (params["a"] as? NSNumber)?.doubleValue ?? 0
             let distance = (params["d"] as? NSNumber)?.doubleValue ?? 0
             return .joystick(angle: angle, distance: distance)

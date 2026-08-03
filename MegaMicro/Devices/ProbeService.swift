@@ -35,7 +35,19 @@ final class ProbeService {
                 log("✓ Found \(name) (PID \(String(format: "0x%04X", iface.productID)), usage page \(String(format: "0x%04X", iface.usagePage))).")
             }
             log("This keyboard speaks the new-generation protocol MegaMicro supports.")
-            log("→ Use “Connect Keyboard (Go Live)” below to light it up.")
+            log("")
+            log("Per-key lighting needs two things beyond a matching device:")
+            log("• Firmware new enough to answer these calls — v0.1.40 does not.")
+            log("  Update with the Work Louder Input app if lighting stays dark.")
+            log("• The six agent keys bound to KV_OAI_AG00…AG05 on the ACTIVE layer.")
+            log("  MegaMicro writes those bindings when it connects. They stop")
+            log("  sending keystrokes and report to MegaMicro instead.")
+            log("")
+            log("Nothing here proves the keyboard answers — the probe only reads")
+            log("what the USB layer advertises. The firmware returns “ok” to")
+            log("lighting calls even when it cannot light anything, so the real")
+            log("test is visual.")
+            log("→ Use “Connect Keyboard (Go Live)” below, then watch the keys.")
             report.foundRawInterface = true
             return report
         }

@@ -18,21 +18,26 @@ enum KeyAgentBinding: Codable, Hashable, Sendable {
 struct LayoutSettings: Codable, Hashable, Sendable {
     var keyBindings: [Int: KeyAgentBinding] = [:]
     var keyLegends: [ControlID: String] = [:]
+    /// Keys pinned to a fixed colour, by key index. These ignore agent state
+    /// entirely — for keys that run a command rather than host an agent, so a
+    /// steady colour is the useful signal.
+    var keyColors: [Int: HSV] = [:]
 
     init() {}
 
-    enum CodingKeys: String, CodingKey { case keyBindings, keyLegends }
+    enum CodingKeys: String, CodingKey { case keyBindings, keyLegends, keyColors }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         keyBindings = try c.decodeIfPresent([Int: KeyAgentBinding].self, forKey: .keyBindings) ?? [:]
         keyLegends = try c.decodeIfPresent([ControlID: String].self, forKey: .keyLegends) ?? [:]
+        keyColors = try c.decodeIfPresent([Int: HSV].self, forKey: .keyColors) ?? [:]
     }
 }
 
 /// The whole persisted configuration, one versioned Codable document.
 struct AppConfig: Codable, Hashable, Sendable {
-    static let currentVersion = 29
+    static let currentVersion = 30
 
     var version: Int = AppConfig.currentVersion
     var webhookPort: UInt16 = 48802
@@ -189,6 +194,13 @@ final class ConfigStore {
                 config.keyBindings[slot] = .workspace(workspace)
             }
             config.workspaceKeyPins = [:]
+        }
+        if config.version < 30 {
+            // The Creator Micro 2 encoder can only emit a bare keycode, so the
+            // dial moved off its Hyper+F18/F19/F20 chords onto plain F18–F20.
+            // Without this the dial's keystrokes match nothing and escape to
+            // macOS instead of driving the mapped action.
+            config.triggerBindings = DefaultTriggers.codexMicro
         }
         if config.version < 13 {
             // Template values are now supplied as a follow-up message. Remove

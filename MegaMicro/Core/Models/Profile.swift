@@ -24,7 +24,10 @@ struct RGBRules: Codable, Hashable, Sendable {
     }
 
     static let standard = RGBRules(rules: [
-        .idle: EffectSpec(color: HSV(h: 0, s: 0, v: 25), kind: .solid),
+        // Idle is dim white, not off: an occupied-but-resting key still has to
+        // read as occupied. At v:25 it was invisible through a diffused keycap
+        // and looked like a broken or unassigned key.
+        .idle: EffectSpec(color: HSV(h: 0, s: 0, v: 90), kind: .solid),
         .thinking: EffectSpec(color: HSV(h: 170, s: 255, v: 150), kind: .breathing(period: 3.6)),
         .coding: EffectSpec(color: HSV(h: 128, s: 255, v: 150), kind: .breathing(period: 2.8)),
         .waiting: EffectSpec(color: HSV(h: 40, s: 255, v: 150), kind: .blink(hz: 1.2)),
@@ -40,6 +43,11 @@ enum UnderglowMode: Codable, Hashable, Sendable {
     case aggregate
     case solid(HSV)
     case off
+    /// The firmware's own rotating rainbow, which the board ships with — but
+    /// it turns solid red the moment an agent errors or needs you, so the
+    /// pretty default doubles as an alarm. Animated on-device, so it costs one
+    /// message per state change rather than a 20 Hz colour stream.
+    case rainbowUnlessAlert
 }
 
 /// A named set of control→action mappings plus RGB rules, optionally

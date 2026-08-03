@@ -30,6 +30,7 @@ struct FleetPane: View {
             Section {
                 Picker("Perimeter glow shows", selection: underglowModeBinding) {
                     Text("Fleet status (most urgent agent)").tag(GlowChoice.aggregate)
+                    Text("Rainbow, red when blocked").tag(GlowChoice.rainbowUnlessAlert)
                     Text("Solid color").tag(GlowChoice.solid)
                     Text("Off").tag(GlowChoice.off)
                 }
@@ -123,7 +124,7 @@ struct FleetPane: View {
 
     // MARK: Underglow (moved here from States & Colors)
 
-    private enum GlowChoice: Hashable { case aggregate, solid, off }
+    private enum GlowChoice: Hashable { case aggregate, solid, off, rainbowUnlessAlert }
 
     private var underglowModeBinding: Binding<GlowChoice> {
         Binding(
@@ -132,6 +133,7 @@ struct FleetPane: View {
                 case .aggregate: .aggregate
                 case .solid: .solid
                 case .off: .off
+                case .rainbowUnlessAlert: .rainbowUnlessAlert
                 }
             },
             set: { choice in
@@ -139,6 +141,7 @@ struct FleetPane: View {
                 case .aggregate: .aggregate
                 case .solid: .solid(HSV(h: 150, s: 180, v: 120))
                 case .off: .off
+                case .rainbowUnlessAlert: .rainbowUnlessAlert
                 }
                 updateUnderglow(mode)
             })

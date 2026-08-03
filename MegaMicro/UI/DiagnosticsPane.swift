@@ -43,7 +43,9 @@ struct DiagnosticsPane: View {
                     • **Run Hardware Probe** — just looks and asks. Changes nothing.
                     • **Probe + Red Test Write** — same, then tries to turn the whole \
                     keyboard solid red for a moment. If you see red, the light pipeline \
-                    works end-to-end and agent states will show on the real keys.
+                    works end-to-end and agent states will show on the real keys. \
+                    (Creator Micro 2 / Codex Micro only answer this on firmware v0.4 \
+                    and later — update with the Work Louder Input app if nothing happens.)
                     """)
                     .font(.callout)
                     Text("""
@@ -113,7 +115,7 @@ struct DiagnosticsPane: View {
             } header: {
                 Text("Hardware Probe")
             } footer: {
-                Text("Connect the keyboard with its USB-C cable for this — the probe can't reach it over Bluetooth. Technical details, for the curious: it looks for the QMK/VIA raw HID interface (vendor id 0x574C, usage page 0xFF60) and runs the VIA protocol handshake.")
+                Text("Connect the keyboard with its USB-C cable for this — the probe can't reach it over Bluetooth. Technical details, for the curious: current Work Louder boards (Creator Micro 2, Codex Micro) are vendor id 0x303A with the JSON-RPC interface on usage page 0xFF00; the original Creator Micro is QMK/VIA on 0x574C / 0xFF60. The probe checks for both. Per-key colour additionally requires firmware v0.4+ and the six agent keys bound to KV_OAI_AG00…AG05 on the active layer, which MegaMicro applies on connect.")
                     .font(.caption)
             }
         }
