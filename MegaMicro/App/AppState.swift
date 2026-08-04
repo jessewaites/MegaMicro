@@ -1661,12 +1661,14 @@ final class AppState {
             return false
         }
         let normalized = path.hasSuffix("/") ? path : path + "/"
-        guard let session = sessionStore.sessions.values
+        // A key stays pointed at its folder whether or not an agent is
+        // currently reporting from it — agents come and go inside a tab, and
+        // hook telemetry lags both ways. With no live session, aim at the
+        // folder itself so the key still lands on that project's terminal.
+        let session = sessionStore.sessions.values
             .filter({ $0.cwd == path || ($0.cwd?.hasPrefix(normalized) ?? false) })
-            .max(by: { $0.updatedAt < $1.updatedAt }) else {
-            log("key \(slot + 1): assigned agent has no live window")
-            return true
-        }
+            .max(by: { $0.updatedAt < $1.updatedAt })
+            ?? AgentSession(source: "", session: path, cwd: path, state: .idle, updatedAt: .distantPast)
         agentFocusService.focus(
             session: session,
             isConductorWorkspace: isConductor,

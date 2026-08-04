@@ -148,7 +148,7 @@ final class AgentFocusService {
             fallbackBundleID(for: session.source)
         }
         guard let bundleID else {
-            log("no running window found for \(session.agent ?? session.source)")
+            log("no running window found for \(session.agent ?? project)")
             return
         }
         activate(bundleID: bundleID, label: session.agent ?? project)
@@ -299,57 +299,115 @@ final class AgentFocusService {
         }) ?? DefaultProfiles.warpBundleIDs.first
         case "kitty": DefaultProfiles.kittyBundleID
         case "wezterm": DefaultProfiles.wezTermBundleID
+        case "ghostty": DefaultProfiles.ghosttyBundleID
         default: nil
         }
+    }
+
+    struct GhosttyTerminal: Equatable {
+        let id: String
+        let path: String
+        let title: String
     }
 
     private func focusGhosttyTerminal(workingDirectory path: String,
                                       matchingTitles titles: [String],
                                       label: String) -> Bool {
-        func appleScriptString(_ value: String) -> String {
-            "\"" + value
-                .replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "\"", with: "\\\"") + "\""
-        }
-        let titleList = titles.filter { !$0.isEmpty }.map(appleScriptString).joined(separator: ", ")
-        let source = """
+        let terminals = ghosttyTerminals(label: label)
+        guard let match = Self.bestGhosttyMatch(
+            terminals: terminals, workingDirectory: path, titles: titles) else { return false }
+        guard runAppleScript("""
         tell application id "com.mitchellh.ghostty"
-            set targetPath to \(appleScriptString(path))
-            repeat with candidate in terminals
-                set terminalPath to working directory of candidate
-                if terminalPath is targetPath or terminalPath starts with (targetPath & "/") or targetPath starts with (terminalPath & "/") then
-                    focus candidate
-                    return id of candidate
-                end if
-            end repeat
-            set titleNeedles to {\(titleList)}
-            repeat with candidate in terminals
-                set terminalTitle to name of candidate
-                repeat with needle in titleNeedles
-                    if terminalTitle contains (contents of needle) then
-                        focus candidate
-                        return id of candidate
-                    end if
-                end repeat
-            end repeat
-            return ""
+            focus (first terminal whose id is \(Self.appleScriptString(match.id)))
         end tell
-        """
+        """, label: label) != nil else { return false }
+        // Name the surface we actually landed on: several tabs can share a
+        // working directory, so a silent "focused" hides a wrong-tab jump.
+        log("focused Ghostty terminal for \(label) — \(match.title) [\(match.path)]")
+        return true
+    }
+
+    /// Ghostty lists surfaces in a fixed order, so a first-match-wins search
+    /// hands the key to whichever tab happens to come first — including a tab
+    /// parked in a parent folder, which "matches" every project beneath it.
+    /// Rank instead: the tab whose directory *is* the agent's beats one that
+    /// merely contains it, and a title naming the agent breaks ties between
+    /// tabs sharing a directory (the agent's tab over the dev server's).
+    static func bestGhosttyMatch(terminals: [GhosttyTerminal],
+                                 workingDirectory: String,
+                                 titles: [String]) -> GhosttyTerminal? {
+        let target = normalizedPath(workingDirectory)
+        guard !target.isEmpty else { return nil }
+        let needles = titles.map { $0.lowercased() }.filter { !$0.isEmpty }
+
+        var best: (rank: (Int, Int, Int), terminal: GhosttyTerminal)?
+        for terminal in terminals {
+            let candidate = normalizedPath(terminal.path)
+            let tier = if candidate == target { 3 }                     // the agent's own directory
+                else if candidate.hasPrefix(target + "/") { 2 }         // inside the agent's project
+                else if target.hasPrefix(candidate + "/") { 1 }         // a parent folder: last resort
+                else { 0 }                                             // title match only
+            let named = needles.contains { terminal.title.lowercased().contains($0) } ? 1 : 0
+            guard tier > 0 || named == 1 else { continue }
+            // Closest relative first, so /code/airtest wins over /code.
+            let closeness = -abs(candidate.split(separator: "/").count
+                                 - target.split(separator: "/").count)
+            let rank = (tier, named, closeness)
+            if best == nil || rank > best!.rank { best = (rank, terminal) }
+        }
+        return best?.terminal
+    }
+
+    /// macOS paths are case-insensitive and hooks report whatever casing the
+    /// user typed (`~/Code` vs `~/code`), so compare folded and unslashed.
+    private static func normalizedPath(_ path: String) -> String {
+        var value = path.lowercased()
+        while value.count > 1, value.hasSuffix("/") { value.removeLast() }
+        return value
+    }
+
+    private func ghosttyTerminals(label: String) -> [GhosttyTerminal] {
+        // U+0001 separates fields so titles and paths need no escaping on the
+        // way back out of AppleScript.
+        guard let output = runAppleScript("""
+        tell application id "com.mitchellh.ghostty"
+            set fieldSeparator to character id 1
+            set listing to ""
+            repeat with candidate in terminals
+                set listing to listing & (id of candidate) & fieldSeparator & ¬
+                    (working directory of candidate) & fieldSeparator & ¬
+                    (name of candidate) & linefeed
+            end repeat
+            return listing
+        end tell
+        """, label: label) else { return [] }
+
+        return output.split(separator: "\n").compactMap { line in
+            let fields = line.components(separatedBy: "\u{1}")
+            guard fields.count >= 3, !fields[0].isEmpty else { return nil }
+            return GhosttyTerminal(id: fields[0], path: fields[1], title: fields[2])
+        }
+    }
+
+    private static func appleScriptString(_ value: String) -> String {
+        "\"" + value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"") + "\""
+    }
+
+    private func runAppleScript(_ source: String, label: String) -> String? {
         var error: NSDictionary?
-        guard let script = NSAppleScript(source: source) else { return false }
+        guard let script = NSAppleScript(source: source) else { return nil }
         let result = script.executeAndReturnError(&error)
         if let error {
-            let number = error[NSAppleScript.errorNumber] as? Int
-            if number == -1743 {
+            if error[NSAppleScript.errorNumber] as? Int == -1743 {
                 log("Ghostty automation permission is required to focus \(label)")
             } else {
                 log("Ghostty focus failed for \(label): \(error[NSAppleScript.errorMessage] ?? "unknown error")")
             }
-            return false
+            return nil
         }
-        guard !result.stringValue.isNilOrEmpty else { return false }
-        log("focused Ghostty terminal for \(label)")
-        return true
+        return result.stringValue ?? ""
     }
 
     private func fallbackBundleID(for source: String) -> String? {

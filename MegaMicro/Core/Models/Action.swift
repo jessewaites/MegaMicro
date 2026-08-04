@@ -56,9 +56,9 @@ enum Action: Codable, Hashable, Sendable {
     case openURL(String)
     case shell(command: String)
     case typeText(String)
-    /// Invoke a Claude Code skill by typing its slash command into the
-    /// frontmost app and pressing return — works with any agent CLI, since
-    /// it's just the text you'd have typed yourself.
+    /// Invoke a skill by typing a request for it into the frontmost app and
+    /// pressing return — works with any agent CLI, since it's just the text
+    /// you'd have typed yourself. See `ExecutionEngine` for the exact wording.
     case runSkill(name: String)
     case switchProfile(String)
     /// Advance to the next profile (wraps). The dedicated mode-switch key.
@@ -72,7 +72,7 @@ enum Action: Codable, Hashable, Sendable {
         case .openURL(let url): url
         case .shell(let cmd): "$ \(cmd)"
         case .typeText(let text): "type \(text.replacingOccurrences(of: "\r", with: "⏎").replacingOccurrences(of: "\u{1B}", with: "⎋"))"
-        case .runSkill(let name): "/\(name)"
+        case .runSkill(let name): ClaudeCommands.contains(name) ? "/\(name)" : "skill: \(name)"
         case .switchProfile(let id): "profile → \(id)"
         case .cycleProfile: "next profile"
         case .none: "—"

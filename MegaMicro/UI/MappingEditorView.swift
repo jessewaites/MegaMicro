@@ -90,17 +90,17 @@ struct MappingEditorView: View {
                 } else {
                     Picker("Skill", selection: $skillName) {
                         ForEach(skills) { skill in
-                            Text(skill.isPersonal ? "/\(skill.name)" : "/\(skill.name)  ·  \(skill.projectName ?? "")")
+                            Text(skill.isPersonal ? skill.name : "\(skill.name)  ·  \(skill.projectName ?? "")")
                                 .tag(skill.name)
                         }
                     }
                 }
-                TextField("or type a slash command name", text: $skillName)
+                TextField("or type a skill name", text: $skillName)
                     .textFieldStyle(.roundedBorder)
                 if let match = skills.first(where: { $0.name == skillName }), !match.summary.isEmpty {
                     Text(match.summary).font(.caption).foregroundStyle(.secondary)
                 }
-                Text("Types the slash command into whatever app is in front and presses return, exactly as if you'd typed it.")
+                Text("Types “use the \(skillName.isEmpty ? "…" : skillName) skill” into whatever app is in front and presses return. Asking in words rather than with /\(skillName.isEmpty ? "…" : skillName) means it works in a Codex tab too, not just Claude Code.")
                     .font(.caption).foregroundStyle(.secondary)
             case .slashCommand:
                 Picker("Command", selection: $skillName) {

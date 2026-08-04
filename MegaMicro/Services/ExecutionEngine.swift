@@ -38,8 +38,13 @@ final class ExecutionEngine {
         case .typeText(let text):
             Task { await self.typeText(text) }
         case .runSkill(let name):
-            // Exactly what you'd type: the slash command, then return.
-            Task { await self.typeText("/\(name)\r") }
+            // Exactly what you'd type, then return. Claude Code's own commands
+            // only exist as slash commands. Skills are asked for in words
+            // instead: every agent CLI resolves a skill by name from plain
+            // language, but `/skill-name` is Claude-only and lands in a Codex
+            // tab as an unknown command.
+            let invocation = ClaudeCommands.contains(name) ? "/\(name)" : "use the \(name) skill"
+            Task { await self.typeText("\(invocation)\r") }
         case .switchProfile:
             break   // handled by AppState before reaching the engine
         }
