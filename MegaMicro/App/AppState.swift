@@ -158,6 +158,9 @@ final class AppState {
     private func autoAssignSession(_ session: AgentSession) {
         guard !demoModeEnabled, let cwd = session.cwd else { return }
         guard !isExcludedFromFleet(session), !bindingCovers(cwd: cwd) else { return }
+        // Conductor workspaces are never claimed automatically, even with a
+        // live agent inside — there are always more of them than keys.
+        guard !cwd.hasPrefix(workspacesRoot + "/") else { return }
         guard let slot = ledKeySlots.first(where: { activeLayoutSettings.keyBindings[$0] == nil })
         else { return }
         var settings = activeLayoutSettings
@@ -1108,11 +1111,11 @@ final class AppState {
             if case .workspace(let id) = binding { return id }
             return nil
         })
-        for workspace in found
-        where !boundWorkspaces.contains(workspace.id) && !isWorkspaceExcluded(workspace) {
-            guard let slot = ledKeySlots.first(where: { settings.keyBindings[$0] == nil }) else { break }
-            settings.keyBindings[slot] = .workspace(workspace.id)
-        }
+        // Deliberately no auto-assignment here. Every workspace on disk used
+        // to claim a free key, so workspaces untouched for months sat on the
+        // board crowding out the two or three actually in use. Assign them by
+        // hand in Manage Agents; they wait in the chip strip until you do.
+        _ = boundWorkspaces
         if settings != activeLayoutSettings { activeLayoutSettings = settings }
     }
 
