@@ -19,6 +19,24 @@ struct SettingsPane: View {
             }
 
             Section {
+                Picker("Appearance", selection: Binding(
+                    get: { appState.config.appearance },
+                    set: { appState.setAppearance($0) }
+                )) {
+                    Text("System").tag("system")
+                    Text("Light").tag("light")
+                    Text("Dark").tag("dark")
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            } header: {
+                Text("Appearance")
+            } footer: {
+                Text("Dark keeps MegaMicro dark whatever the rest of the Mac is doing — the keyboard's own colors are unaffected. System follows your macOS setting.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+
+            Section {
                 Toggle("Mac notifications", isOn: Binding(
                     get: { appState.config.macNotificationsEnabled },
                     set: { appState.setMacNotificationsEnabled($0) }

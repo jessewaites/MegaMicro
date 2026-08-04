@@ -1268,6 +1268,9 @@ final class AppState {
             guard let data = try? encoder.encode(sessions) else { return "[]" }
             return String(decoding: data, as: UTF8.self)
         }
+        server.lightShowHandler = { @MainActor [weak self] in
+            self?.runLightShow() ?? false
+        }
         do {
             try server.start()
             webhookServer = server
@@ -1549,6 +1552,39 @@ final class AppState {
             }
             self?.log("✨ keyboard test finished")
         }
+    }
+
+    /// Ten seconds of per-key colour on demand — what the
+    /// `/creator-micro-lightshow` skill fires, and the shortest way to show
+    /// that each key holds a colour of its own. Returns false when there is no
+    /// board to run it on, or a show is already running.
+    @discardableResult
+    func runLightShow() -> Bool {
+        guard let voai = hardwareDevice as? VOAIDevice, hardwareConnected, !lightShowRunning else { return false }
+        lightShowRunning = true
+        log("🌈 light show — every key its own colour")
+        let script = LightShow.script()
+        let ledCount = layout.ledCount
+
+        Task { @MainActor [weak self] in
+            defer {
+                self?.lightShowRunning = false
+                self?.currentFrame = .uniform(.off, ledCount: ledCount)
+            }
+            for step in script {
+                voai.sendThreads(LightShow.threads(for: step))
+                voai.setUnderglow(VOAI.ZoneParam(e: step.underglowEffect.rawValue, b: 1,
+                                                 s: 0.7, m: 1, c: step.underglow))
+                // Mirror it on screen too: the window and the board should show
+                // the same colours in a screen recording.
+                let frame = LightShow.frame(for: step, ledCount: ledCount)
+                self?.currentFrame = frame
+                self?.dashboard.currentFrame = frame
+                try? await Task.sleep(for: .seconds(step.hold))
+            }
+            self?.log("🌈 light show finished")
+        }
+        return true
     }
 
     /// Pin a key to a colour, or pass nil to hand it back to agent state.

@@ -70,10 +70,15 @@ struct MegaMicroApp: App {
                     .disabled(!appState.demoModeEnabled)
             }
             CommandMenu("View") {
-                Menu("Appearance") {
-                    Button("System") { appState.setAppearance("system") }
-                    Button("Light") { appState.setAppearance("light") }
-                    Button("Dark") { appState.setAppearance("dark") }
+                // A Picker, not three Buttons: the menu then shows which one
+                // is actually on.
+                Picker("Appearance", selection: Binding(
+                    get: { appState.config.appearance },
+                    set: { appState.setAppearance($0) }
+                )) {
+                    Text("System").tag("system")
+                    Text("Light").tag("light")
+                    Text("Dark").tag("dark")
                 }
                 Divider()
                 // ⌘1–⌘9 only: single-digit key equivalents.

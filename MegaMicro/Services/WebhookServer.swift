@@ -11,6 +11,9 @@ final class WebhookServer: @unchecked Sendable {
     private let onState: @Sendable (StateReport) -> Void
     /// Optional provider for GET /sessions (debug/observability endpoint).
     var sessionsProvider: (@Sendable () async -> String)?
+    /// Optional handler for POST /lightshow: starts the demo reel on the
+    /// board and reports whether there was a board to start it on.
+    var lightShowHandler: (@Sendable () async -> Bool)?
     private var listener: NWListener?
     private let queue = DispatchQueue(label: "megamicro.webhook")
     private var activeConnections = 0
@@ -121,6 +124,21 @@ final class WebhookServer: @unchecked Sendable {
                 }
             } else {
                 respond(connection, status: "200 OK", json: "[]")
+            }
+        case ("POST", "/lightshow"):
+            guard let handler = lightShowHandler else {
+                respond(connection, status: "503 Service Unavailable", json: #"{"ok":false,"error":"no board"}"#)
+                return
+            }
+            Task { [weak self] in
+                let started = await handler()
+                if started {
+                    self?.respond(connection, status: "200 OK",
+                                  json: #"{"ok":true,"seconds":\#(Int(LightShow.duration))}"#)
+                } else {
+                    self?.respond(connection, status: "409 Conflict",
+                                  json: #"{"ok":false,"error":"keyboard not connected, or a light show is already running"}"#)
+                }
             }
         case ("POST", "/state"):
             if let report = try? JSONDecoder().decode(StateReport.self, from: request.body),
