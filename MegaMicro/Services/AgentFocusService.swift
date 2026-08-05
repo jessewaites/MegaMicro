@@ -313,9 +313,35 @@ final class AgentFocusService {
     private func focusGhosttyTerminal(workingDirectory path: String,
                                       matchingTitles titles: [String],
                                       label: String) -> Bool {
-        let terminals = ghosttyTerminals(label: label)
-        guard let match = Self.bestGhosttyMatch(
-            terminals: terminals, workingDirectory: path, titles: titles) else { return false }
+        var terminals = ghosttyTerminals(label: label)
+        var match = Self.bestGhosttyMatch(
+            terminals: terminals, workingDirectory: path, titles: titles)
+
+        if match == nil, !terminals.isEmpty {
+            // No tab admits to being in this project. Usually one of them is —
+            // it just never got to report the directory, because the agent was
+            // launched in the same command line as the `cd` that entered it.
+            // Ask the running processes where they actually are, tell their
+            // terminals, and look again.
+            let corrections = TerminalDirectoryReporter.announceDirectories(under: path)
+            guard !corrections.isEmpty else {
+                // Falling through to a plain app activation lands on whatever
+                // tab was already frontmost, which reads as a dead key. Name
+                // the directory nothing claimed so the log says why.
+                log("no Ghostty tab is in \(path) for \(label)")
+                return false
+            }
+            terminals = ghosttyTerminals(label: label)
+            match = Self.bestGhosttyMatch(
+                terminals: terminals, workingDirectory: path, titles: titles)
+            if match != nil {
+                log("corrected \(corrections.count == 1 ? "a stale directory" : "\(corrections.count) stale directories") to find \(label)")
+            }
+        }
+        guard let match else {
+            log("no Ghostty tab is in \(path) for \(label)")
+            return false
+        }
         guard runAppleScript("""
         tell application id "com.mitchellh.ghostty"
             focus (first terminal whose id is \(Self.appleScriptString(match.id)))

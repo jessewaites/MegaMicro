@@ -130,6 +130,62 @@ func normalize(_ root: [String: Any], args: BridgeArguments) -> NormalizedReport
         terminalEndpoint: terminal.endpoint)
 }
 
+/// Ghostty learns a tab's directory from OSC 7, which the shell emits at each
+/// prompt — so a tab whose agent was started in the same breath as its `cd`
+/// (`cd project && claude`) keeps reporting the directory the shell sat in
+/// before. MegaMicro finds Ghostty tabs by directory, so that stale value
+/// sends the project's key to the wrong tab, or nowhere.
+///
+/// The hook runs inside the tab it is reporting about, so it can correct the
+/// record: writing OSC 7 to the controlling terminal is exactly what a shell
+/// prompt does. Ghostty rejects a URI with no authority, so name this host.
+func reportWorkingDirectoryToTerminal(_ path: String?) {
+    let environment = ProcessInfo.processInfo.environment
+    // Scoped to Ghostty: every other terminal MegaMicro supports identifies
+    // its tab through an environment variable the report already carries.
+    guard environment["TERM_PROGRAM"]?.lowercased() == "ghostty"
+            || environment["GHOSTTY_RESOURCES_DIR"] != nil else { return }
+    guard let path, path.hasPrefix("/"),
+          let encoded = path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+    else { return }
+    guard let descriptor = openControllingTerminal() else { return }
+    defer { close(descriptor) }
+    // Ghostty ignores a directory it reads as remote, and it decides that by
+    // matching the authority against the local hostname exactly — the
+    // lowercase form `ProcessInfo.hostName` returns is rejected, as is an
+    // empty authority. `localhost` is always understood as this machine.
+    let sequence = Array("\u{1b}]7;file://localhost\(encoded)\u{7}".utf8)
+    _ = sequence.withUnsafeBufferPointer { write(descriptor, $0.baseAddress, $0.count) }
+}
+
+/// Agents spawn their hooks detached from the terminal, so `/dev/tty` is
+/// usually unopenable here even though the agent itself is sitting in one —
+/// and `access` still says yes, so only the open tells the truth. The kernel
+/// records every process's controlling terminal, so fall back to walking up to
+/// the first ancestor that has one and addressing that device by name.
+/// O_NOCTTY throughout: reporting a directory must never claim a terminal.
+func openControllingTerminal() -> Int32? {
+    let descriptor = open("/dev/tty", O_WRONLY | O_NOCTTY)
+    if descriptor >= 0 { return descriptor }
+    var pid = getpid()
+    // bridge → shell → agent is the deep case; stop well short of launchd.
+    for _ in 0..<8 {
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.size
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        guard sysctl(&mib, 4, &info, &size, nil, 0) == 0, size > 0 else { return nil }
+        let device = info.kp_eproc.e_tdev
+        if device != -1, let name = devname(device, S_IFCHR) {
+            let terminal = open("/dev/" + String(cString: name), O_WRONLY | O_NOCTTY)
+            return terminal >= 0 ? terminal : nil
+        }
+        let parent = info.kp_eproc.e_ppid
+        guard parent > 1 else { return nil }
+        pid = parent
+    }
+    return nil
+}
+
 func neutralOutput(provider: String, event: String) -> String {
     let provider = provider.lowercased()
     let event = event.lowercased()
@@ -163,6 +219,7 @@ let report = normalize(root, args: args)
 if args.dryRunReport {
     FileHandle.standardOutput.write((try? JSONEncoder().encode(report)) ?? Data("{}".utf8))
 } else {
+    reportWorkingDirectoryToTerminal(report.cwd)
     post(report, port: args.port)
     FileHandle.standardOutput.write(Data((neutralOutput(provider: args.provider, event: args.event) + "\n").utf8))
 }
