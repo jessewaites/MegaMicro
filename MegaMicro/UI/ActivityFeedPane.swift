@@ -22,9 +22,10 @@ struct DashboardPane: View {
     private let pageSize = 12
 
     /// On/off for the physical board, where you can actually find it. Off
-    /// hands the keyboard back — lights cleared, keys typing again — so
-    /// another app (Codex, Work Louder Input) can drive it; only one host can
-    /// at a time.
+    /// leaves it dark and typing letters again — dark for real, written into
+    /// the board, so it stays that way on a desk we've walked away from — and
+    /// hands it to another app (Codex, Work Louder Input) if one wants it;
+    /// only one host can drive it at a time.
     @ViewBuilder
     private var keyboardPowerControl: some View {
         HStack(spacing: 8) {

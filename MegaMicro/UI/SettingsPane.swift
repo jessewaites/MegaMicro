@@ -62,7 +62,7 @@ struct SettingsPane: View {
             } header: {
                 Text("Keyboard")
             } footer: {
-                Text("MegaMicro reprograms the keys so they report to it instead of typing letters — that is what makes per-key color work, and it means the keys do nothing while the app is closed. Turn this on to put the factory keycodes back on quit. Either way the lights are always cleared, so the board never sits there showing an agent state that ended hours ago. To hand the keyboard to Codex or Work Louder Input, use Diagnostics → Release for Editing: only one app can drive it at a time.")
+                Text("MegaMicro reprograms the keys so they report to it instead of typing letters — that is what makes per-key color work, and it means the keys do nothing while the app is closed. Turn this on to put the factory keycodes back on quit. Either way the lights go out — switched off in the keyboard itself, since it relights on its own the moment MegaMicro stops driving it, and a board left on a desk shouldn't glow for an app that isn't running. Your lighting comes back when you turn the keyboard on again. To hand the keyboard to Codex or Work Louder Input, use Diagnostics → Release for Editing: only one app can drive it at a time.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
 

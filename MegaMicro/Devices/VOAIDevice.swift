@@ -196,13 +196,21 @@ final class VOAIDevice: KeyboardDevice {
         }
     }
 
-    /// Hand the board back: clear the lighting we own and put the factory
-    /// keycodes back, so the keys type again and nothing is left glowing a
-    /// stale agent colour. Best-effort — the caller drops the handle either
-    /// way, and a keyboard that has already been unplugged has nothing to
-    /// restore.
-    func handBack(restoreKeymap: Bool, completion: @escaping () -> Void) {
-        guard isConnected else { return completion() }
+    /// Hand the board back: turn the lighting off for good, and optionally put
+    /// the factory keycodes back so the keys type again.
+    ///
+    /// Clearing the LEDs we drive is not enough. The moment we let go, the
+    /// firmware renders each layer's own stored lighting — white keys and a
+    /// rainbow ring — so a board we "cleared" lights right back up, which is
+    /// no good for a keyboard left on a desk. Off has to be written into that
+    /// stored block. `blanked` comes back so the caller can put the user's
+    /// lighting back when the board is switched on again.
+    ///
+    /// Best-effort — the caller drops the handle either way, and a keyboard
+    /// that has already been unplugged has nothing to restore.
+    func handBack(restoreKeymap: Bool, blankLights: Bool = true,
+                  completion: @escaping (_ blanked: [String: String]?) -> Void) {
+        guard isConnected else { return completion(nil) }
         // Everything dark first, so a failure mid-restore still leaves an
         // honest board rather than yesterday's colours.
         let dark = VOAI.ledIndexForAgentSlot.indices.map {
@@ -216,18 +224,140 @@ final class VOAIDevice: KeyboardDevice {
         setUnderglow(.off)
         lastParams = nil
 
-        guard restoreKeymap else { return completion() }
+        guard restoreKeymap || blankLights else { return completion(nil) }
+        call({ try VOAI.fsReadRequest(id: $0, file: VOAIDevice.keymapFile) }) { [weak self] result in
+            guard let self,
+                  case .success(let payload) = result,
+                  var config = VOAIDevice.keymapConfig(from: payload)
+            else { return completion(nil) }
+
+            if restoreKeymap, let restored = VOAIDevice.restoringStockKeys(in: config) {
+                config = restored
+            }
+            var blanked: [String: String]?
+            if blankLights, let result = VOAIDevice.blankingLights(in: config) {
+                config = result.config
+                blanked = result.saved
+            }
+            guard let encoded = try? JSONSerialization.data(withJSONObject: config),
+                  let text = String(data: encoded, encoding: .utf8)
+            else { return completion(nil) }
+            self.call({ try VOAI.fsWriteRequest(id: $0, file: VOAIDevice.keymapFile, data: text) }) { _ in
+                // Stock keycodes hand the LEDs back to `lights.preview`, so
+                // this is what darkens the board now rather than at the next
+                // layer switch. Inert while the keys are still agent-bound,
+                // where the frames above have already blacked it out.
+                self.previewLights(.off, underglow: .off)
+                completion(blanked)
+            }
+        }
+    }
+
+    /// Drives the two global lighting surfaces. Only live when the layer is
+    /// *not* agent-bound; in OAI mode the firmware ignores it (see
+    /// `setUnderglow`).
+    func previewLights(_ backlight: VOAI.SurfaceParam, underglow: VOAI.SurfaceParam) {
+        guard isConnected else { return }
+        requestID += 1
+        guard let message = try? VOAI.lightsPreviewRequest(
+            id: requestID, backlight: backlight, underglow: underglow) else { return }
+        for report in VOAI.frames(channel: VOAI.channelRPC, message: message) {
+            try? transport.write(report)
+        }
+    }
+
+    /// Puts back the lighting `blankingLights` took away, keyed the same way.
+    /// A layer the user has since changed elsewhere keeps whatever it has now,
+    /// since only layers we blanked are touched.
+    func restoreLights(_ saved: [String: String], completion: @escaping () -> Void) {
+        guard isConnected else { return completion() }
         call({ try VOAI.fsReadRequest(id: $0, file: VOAIDevice.keymapFile) }) { [weak self] result in
             guard let self,
                   case .success(let payload) = result,
                   let config = VOAIDevice.keymapConfig(from: payload),
-                  let restored = VOAIDevice.restoringStockKeys(in: config),
+                  let restored = VOAIDevice.restoringLights(saved, in: config),
                   let encoded = try? JSONSerialization.data(withJSONObject: restored),
                   let text = String(data: encoded, encoding: .utf8)
             else { return completion() }
             self.call({ try VOAI.fsWriteRequest(id: $0, file: VOAIDevice.keymapFile, data: text) }) { _ in
                 completion()
             }
+        }
+    }
+
+    /// The lighting each layer renders on its own, switched off and handed
+    /// back so it can be restored verbatim. Returns nil when every layer is
+    /// already dark, so a board that is off stays off without a needless
+    /// write. Keys are "profile/layer" — stable across app launches, and the
+    /// only thing we need to find the layer again.
+    static func blankingLights(in config: [String: Any]) -> (config: [String: Any], saved: [String: String])? {
+        var config = config
+        guard var profiles = config["profiles"] as? [[String: Any]] else { return nil }
+        var saved: [String: String] = [:]
+        for p in profiles.indices {
+            var profile = profiles[p]
+            guard var layers = profile["layers"] as? [[String: Any]] else { continue }
+            for l in layers.indices {
+                var layer = layers[l]
+                guard let lights = layer["lights"] as? [String: Any],
+                      !isDark(lights) else { continue }
+                if let encoded = try? JSONSerialization.data(withJSONObject: lights),
+                   let text = String(data: encoded, encoding: .utf8) {
+                    saved["\(p)/\(l)"] = text
+                }
+                layer["lights"] = darkLights
+                layers[l] = layer
+            }
+            profile["layers"] = layers
+            profiles[p] = profile
+        }
+        guard !saved.isEmpty else { return nil }
+        config["profiles"] = profiles
+        return (config, saved)
+    }
+
+    static func restoringLights(_ saved: [String: String], in config: [String: Any]) -> [String: Any]? {
+        var config = config
+        guard var profiles = config["profiles"] as? [[String: Any]], !saved.isEmpty else { return nil }
+        var restoredAny = false
+        for (key, text) in saved {
+            let parts = key.split(separator: "/").compactMap { Int($0) }
+            guard parts.count == 2, profiles.indices.contains(parts[0]),
+                  var layers = profiles[parts[0]]["layers"] as? [[String: Any]],
+                  layers.indices.contains(parts[1]),
+                  let lights = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]
+            else { continue }
+            layers[parts[1]]["lights"] = lights
+            profiles[parts[0]]["layers"] = layers
+            restoredAny = true
+        }
+        guard restoredAny else { return nil }
+        config["profiles"] = profiles
+        return config
+    }
+
+    /// How the board lights itself out of the box — white keys, rainbow ring.
+    /// The fallback for switching lighting back on when there was nothing of
+    /// the user's to put back, so "on" never means a dark keyboard.
+    static let factoryBacklight = VOAI.SurfaceParam(
+        effect: "solid", brightness: 1, speed: 0.5, magic: 1, color: 0xFFFFFF)
+    static let factoryUnderglow = VOAI.SurfaceParam(
+        effect: "rainbow", brightness: 1, speed: 0.55, magic: 1, color: 0xFFFFFF)
+
+    /// Both surfaces off, in the shape the firmware stores them.
+    static let darkLights: [String: Any] = [
+        "backlight": ["effect": "off", "brightness": 0, "speed": 0, "magic": 1, "color": 0],
+        "underglow": ["effect": "off", "brightness": 0, "speed": 0, "magic": 1, "color": 0],
+    ]
+
+    /// A surface counts as dark when it is switched off or turned all the way
+    /// down — either way there is nothing of the user's to preserve.
+    private static func isDark(_ lights: [String: Any]) -> Bool {
+        ["backlight", "underglow"].allSatisfy { key in
+            guard let surface = lights[key] as? [String: Any] else { return true }
+            let effect = (surface["effect"] as? String)?.lowercased()
+            let brightness = (surface["brightness"] as? NSNumber)?.doubleValue ?? 0
+            return effect == "off" || brightness <= 0
         }
     }
 

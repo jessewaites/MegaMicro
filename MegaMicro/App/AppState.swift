@@ -1951,6 +1951,9 @@ final class AppState {
                     case .failure(let error):
                         self?.log("⚠️ could not bind agent keys — per-key colour will not show: \(error.localizedDescription)")
                     }
+                    // Strictly after the keymap write: both edit the same file
+                    // on the device, and the loser of a race would be undone.
+                    self?.restoreDeviceLightsIfBlanked(voai)
                 }
             }
             return true
@@ -2035,9 +2038,11 @@ final class AppState {
         log("keyboard released — edit layers freely, then hit Reconnect")
     }
 
-    /// Release the board for another app (Codex, Work Louder Input). Only one
-    /// host can drive the keyboard's JSON-RPC channel at a time, so this is the
-    /// handoff: lights cleared, factory keycodes restored, handle dropped.
+    /// Turn the board off: dark, and staying dark. Also the handoff to another
+    /// app (Codex, Work Louder Input), since only one host can drive the
+    /// keyboard's JSON-RPC channel at a time — factory keycodes restored,
+    /// handle dropped. The lighting the firmware would otherwise resume on its
+    /// own is set aside so switching back on returns it.
     func disconnectHardware() {
         hardwareReleased = true
         guard let voai = hardwareDevice as? VOAIDevice else {
@@ -2045,23 +2050,62 @@ final class AppState {
             log("keyboard released")
             return
         }
-        voai.handBack(restoreKeymap: true) { [weak self] in
+        voai.handBack(restoreKeymap: true) { [weak self] blanked in
             Task { @MainActor in
-                self?.teardownHardware()
-                self?.log("keyboard released — lights cleared, keys type again")
+                guard let self else { return }
+                self.rememberBlankedLights(blanked)
+                self.teardownHardware()
+                self.log("keyboard off — lights out, keys type again")
             }
         }
     }
 
-    /// Called as the app quits. Always clears the lighting so the board isn't
-    /// left showing stale agent colours; only restores the keymap when the
-    /// user has asked for it, since bound keys are the normal working state.
+    /// Called as the app quits. Leaves the board dark rather than letting the
+    /// firmware relight it the moment we let go — a keyboard on a desk should
+    /// not glow for an app that isn't running. Only restores the keymap when
+    /// the user has asked for it, since bound keys are the normal working
+    /// state.
     func handBackKeyboardOnQuit() {
         guard let voai = hardwareDevice as? VOAIDevice, hardwareConnected else { return }
         let semaphore = DispatchSemaphore(value: 0)
-        voai.handBack(restoreKeymap: config.restoreKeyboardOnQuit) { semaphore.signal() }
+        // Captured off the main actor: quitting blocks the main thread, so the
+        // usual hop back would deadlock against our own wait.
+        nonisolated(unsafe) var blanked: [String: String]?
+        voai.handBack(restoreKeymap: config.restoreKeyboardOnQuit) {
+            blanked = $0
+            semaphore.signal()
+        }
         // Quitting is synchronous; give the writes a moment to reach the wire.
-        _ = semaphore.wait(timeout: .now() + 1.5)
+        _ = semaphore.wait(timeout: .now() + 2.0)
+        rememberBlankedLights(blanked)
+    }
+
+    /// Records the lighting we switched off, so the next Turn On can put it
+    /// back. Written straight through rather than debounced: the two moments
+    /// this runs — switching the board off, and quitting — are both moments
+    /// where a delayed save might never happen.
+    private func rememberBlankedLights(_ blanked: [String: String]?) {
+        // A board that was already dark returns nothing; still mark it blanked
+        // so switching on relights it rather than leaving a dead keyboard.
+        config.savedDeviceLights = blanked ?? config.savedDeviceLights ?? [:]
+        saveConfigNow()
+    }
+
+    /// Puts the user's own lighting back after a Turn Off, once the board is
+    /// answering again. No-op unless we were the ones who blanked it.
+    private func restoreDeviceLightsIfBlanked(_ voai: VOAIDevice) {
+        guard let saved = config.savedDeviceLights else { return }
+        config.savedDeviceLights = nil
+        saveConfigNow()
+        guard !saved.isEmpty else {
+            // Nothing of the user's to restore — light it the way the board
+            // ships, so "on" never means a keyboard that stays dark.
+            voai.previewLights(VOAIDevice.factoryBacklight, underglow: VOAIDevice.factoryUnderglow)
+            return
+        }
+        voai.restoreLights(saved) { [weak self] in
+            Task { @MainActor in self?.log("💡 keyboard lighting restored") }
+        }
     }
 
     /// Semantic input from the pad (v.oai firmware): route key presses into

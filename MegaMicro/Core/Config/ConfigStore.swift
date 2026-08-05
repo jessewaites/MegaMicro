@@ -84,6 +84,13 @@ struct AppConfig: Codable, Hashable, Sendable {
     /// tweak, not an app update.
     var claudeHookEvents: [String: String] = AppConfig.defaultClaudeHookEvents
     var codexHookEvents: [String: String] = AppConfig.defaultCodexHookEvents
+    /// The board's own lighting, set aside while MegaMicro has it switched
+    /// off. The firmware relights the keyboard the moment we stop driving it,
+    /// so turning it off means writing darkness into the device — and this is
+    /// what puts the user's colours back when they switch it on again.
+    /// Non-nil means the board is currently blanked, empty means it had
+    /// nothing worth saving.
+    var savedDeviceLights: [String: String]?
 
     static let defaultClaudeHookEvents: [String: String] = [
         "SessionStart": "idle",       // announce on boot, before any activity
@@ -129,7 +136,7 @@ struct AppConfig: Codable, Hashable, Sendable {
              claudeHookEvents, codexHookEvents,
              activeLayoutID, customLayouts, layoutSettings, fleetExclusions, appearance,
              macNotificationsEnabled, promptSnippets, onboardingComplete, deviceName,
-             steadyGlow
+             steadyGlow, savedDeviceLights
     }
 
     init(from decoder: Decoder) throws {
@@ -157,6 +164,7 @@ struct AppConfig: Codable, Hashable, Sendable {
         onboardingComplete = try c.decodeIfPresent(Bool.self, forKey: .onboardingComplete) ?? defaults.onboardingComplete
         deviceName = try c.decodeIfPresent(String.self, forKey: .deviceName) ?? defaults.deviceName
         steadyGlow = try c.decodeIfPresent(Bool.self, forKey: .steadyGlow) ?? defaults.steadyGlow
+        savedDeviceLights = try c.decodeIfPresent([String: String].self, forKey: .savedDeviceLights)
     }
 }
 
