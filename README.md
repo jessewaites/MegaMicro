@@ -23,11 +23,12 @@ Companion apps bring the live dashboard to iPhone, iPad, and Apple Watch.
 > [!IMPORTANT]
 > MegaMicro is a general-purpose RGB AI keyboard configurator: it maps live AI-agent activity to
 > per-key lighting and actions, driven by a device-agnostic layout model. It runs on **macOS 14 or
-> later** and connects over **USB-C** (Bluetooth is untested).
+> later** and connects over **USB-C or Bluetooth Low Energy**.
 >
-> The **Work Louder Creator Micro 2** (`303A:8297`) is the primary, fully verified device —
-> per-key colour, key input, dial, and joystick are all working and tested on real hardware with
-> firmware **v0.6.1**. The **OpenAI Codex Micro** (`303A:8360`) shares the same firmware family and
+> The **Work Louder Creator Micro 2** (`303A:8297` / `303A:8298`) is the primary, fully verified
+> device. Per-key colour, perimeter lighting, key input, dial, and joystick work on real hardware
+> with firmware **v0.6.1**; `303A:8298` is verified over Bluetooth. The **OpenAI Codex Micro**
+> (`303A:8360`) shares the same firmware family and
 > is matched by the same code path, but has not been tested on hardware. The original **Creator
 > Micro v1** is supported through the separate `VIA` backend. More boards are addable through the
 > same layout model.
@@ -86,6 +87,7 @@ that the provider has a native integration.
 
 - **Conductor** — workspace discovery, assignment, telemetry routing, and workspace focus.
 - **Ghostty 1.3+** — exact tab or split focusing by working directory and terminal title.
+- **Mosaic** — dedicated shortcuts for its embedded Ghostty tabs and panes.
 - **iTerm2** — exact tab or split focusing through `ITERM_SESSION_ID`, with a working-directory
   fallback for restored or legacy sessions.
 - **Visual Studio Code** — workspace-window focus for agents running in the integrated terminal.
@@ -188,6 +190,21 @@ If System Settings shows a permission as enabled but MegaMicro still reports it 
 remove the old MegaMicro entry with the `−` button, add the current app with `+`, and enable
 it again.
 
+Default terminal profiles send `F13` from the approval key instead of typing `y` followed by
+Return into whichever app is focused. Bind `F13` only inside your agent's confirmation context.
+For Claude Code, add this entry to `~/.claude/keybindings.json`:
+
+```json
+{
+  "bindings": [
+    {
+      "context": "Confirmation",
+      "bindings": { "f13": "confirm:yes" }
+    }
+  ]
+}
+```
+
 ### 2. Update the firmware, then quit Input
 
 Install [Work Louder Input](https://worklouder.cc/input) and let it update the keyboard to
@@ -212,7 +229,7 @@ because the pad enumerates as a real keyboard. Click **Quit** — it is unrelate
 ### 3. Connect the keyboard
 
 **MegaMicro connects on its own at launch.** There is nothing to click. If the board is not
-plugged in yet, it keeps watching and grabs it when it appears.
+plugged in or paired yet, it keeps watching and grabs it when it appears.
 
 On connect, MegaMicro programs the keyboard's active layer for you:
 
@@ -464,8 +481,8 @@ intermediate binary directly.
 
 ### The keyboard is not detected
 
-- Use USB-C rather than Bluetooth.
-- Confirm the cable carries data, not power only.
+- For USB-C, confirm the cable carries data, not power only.
+- For Bluetooth, confirm the keyboard is paired and connected in System Settings.
 - Quit Work Louder Input so it releases the device interface.
 - Grant Input Monitoring.
 - Run Diagnostics → Run Hardware Probe and copy the resulting report.
@@ -618,12 +635,12 @@ local webhook. We also welcome new *sources*, especially ones that report state 
 MegaMicro is an early-stage project. The software simulator, agent state engine, integrations,
 and configuration UI are functional.
 
-Physical hardware support is verified on a **Creator Micro 2 (`303A:8297`) running firmware
-v0.6.1**: per-key colour, key presses, the dial, and the joystick have all been exercised on real
-hardware. Treat other combinations as experimental — in particular the **OpenAI Codex Micro**
-(`303A:8360`), which shares the firmware family and the same code path but has not been tested on
-a physical unit, and **Bluetooth**, which is untested throughout. Behaviour across other firmware
-revisions has not been surveyed.
+Physical hardware support is verified on **Creator Micro 2 firmware v0.6.1**: per-key colour,
+perimeter lighting, key presses, the dial, and the joystick have all been exercised on real
+hardware. USB is verified on `303A:8297`; Bluetooth Low Energy is verified on `303A:8298`.
+Treat other combinations as experimental, particularly the **OpenAI Codex Micro** (`303A:8360`),
+which shares the firmware family and code path but has not been tested on a physical unit.
+Behaviour across other firmware revisions has not been surveyed.
 
 Bug reports should include:
 

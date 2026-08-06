@@ -300,6 +300,7 @@ final class AgentFocusService {
         case "kitty": DefaultProfiles.kittyBundleID
         case "wezterm": DefaultProfiles.wezTermBundleID
         case "ghostty": DefaultProfiles.ghosttyBundleID
+        case "mosaic": DefaultProfiles.mosaicBundleID
         default: nil
         }
     }

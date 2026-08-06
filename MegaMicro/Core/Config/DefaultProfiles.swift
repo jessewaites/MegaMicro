@@ -6,6 +6,7 @@ import Foundation
 enum DefaultProfiles {
     static let conductorBundleID = "com.conductor.app"
     static let ghosttyBundleID = "com.mitchellh.ghostty"
+    static let mosaicBundleID = "mosaic.com.emergent.app"
     static let iTerm2BundleID = "com.googlecode.iterm2"
     static let vsCodeBundleID = "com.microsoft.VSCode"
     static let cursorBundleID = "com.todesktop.230313mzl4w4u92"
@@ -13,14 +14,14 @@ enum DefaultProfiles {
     static let kittyBundleID = "net.kovidgoyal.kitty"
     static let wezTermBundleID = "com.github.wez.wezterm"
 
-    static var all: [Profile] { [conductor, ghostty, iTerm2, cursor, vsCode, warp, kitty, wezTerm] }
+    static var all: [Profile] { [conductor, ghostty, mosaic, iTerm2, cursor, vsCode, warp, kitty, wezTerm] }
 
     private static func terminalProfile(id: String, name: String, bundleIDs: [String],
                                         launchCommand: String,
                                         nextTab: KeyChord, previousTab: KeyChord,
                                         nextPane: KeyChord, previousPane: KeyChord) -> Profile {
         var m: [ControlID: [ControlGesture: Action]] = [:]
-        m[.key(6)] = [.press: .typeText("y\r")]
+        m[.key(6)] = [.press: .keystroke(chord: KeyChord(keyCode: KeyCodes.f13, modifiers: []), target: .frontmost)]
         m[.key(7)] = [.press: .typeText("\r")]
         m[.key(8)] = [.press: .typeText("\u{1B}")]
         m[.key(9)] = [.press: .keystroke(
@@ -93,7 +94,7 @@ enum DefaultProfiles {
         }
         var m: [ControlID: [ControlGesture: Action]] = [:]
         // Keys 0–5: agent keys, no shortcut defaults.
-        m[.key(6)] = [.press: .typeText("y\r")]                                // ✓ approve CLI prompt
+        m[.key(6)] = [.press: .keystroke(chord: KeyChord(keyCode: KeyCodes.f13, modifiers: []), target: .frontmost)]                                // approve Claude confirmation only
         m[.key(7)] = [.press: .typeText("\r")]                                 // plain enter
         m[.key(8)] = [.press: .typeText("\u{1B}")]                             // ⊗ escape / interrupt
         m[.key(9)] = [.press: key(KeyCodes.c, .control)]                       // hard interrupt ^C
@@ -120,6 +121,16 @@ enum DefaultProfiles {
             rgbRules: .standard)
     }()
 
+    static let mosaic = terminalProfile(
+        id: "mosaic",
+        name: "Mosaic",
+        bundleIDs: [mosaicBundleID],
+        launchCommand: "open -a Mosaic",
+        nextTab: KeyChord(keyCode: KeyCodes.rightBracket, modifiers: [.command, .shift]),
+        previousTab: KeyChord(keyCode: KeyCodes.leftBracket, modifiers: [.command, .shift]),
+        nextPane: KeyChord(keyCode: KeyCodes.rightBracket, modifiers: [.command, .option]),
+        previousPane: KeyChord(keyCode: KeyCodes.leftBracket, modifiers: [.command, .option]))
+
     // MARK: iTerm2
 
     /// iTerm2 uses the same terminal-oriented agent controls as Ghostty. The
@@ -130,7 +141,7 @@ enum DefaultProfiles {
             .keystroke(chord: KeyChord(keyCode: code, modifiers: mods), target: .frontmost)
         }
         var m: [ControlID: [ControlGesture: Action]] = [:]
-        m[.key(6)] = [.press: .typeText("y\r")]
+        m[.key(6)] = [.press: .keystroke(chord: KeyChord(keyCode: KeyCodes.f13, modifiers: []), target: .frontmost)]
         m[.key(7)] = [.press: .typeText("\r")]
         m[.key(8)] = [.press: .typeText("\u{1B}")]
         m[.key(9)] = [.press: key(KeyCodes.c, .control)]
