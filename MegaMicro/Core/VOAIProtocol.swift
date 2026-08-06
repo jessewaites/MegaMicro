@@ -339,6 +339,24 @@ enum VOAI {
         }
     }
 
+    static func ambientZoneParam(for spec: EffectSpec, renderedColor: HSV) -> ZoneParam {
+        if case .breathing = spec.kind {
+            let (effect, speed) = effectParams(for: spec.kind)
+            return ZoneParam(
+                e: effect.rawValue,
+                b: Double(spec.color.v) / 255.0,
+                s: speed ?? 0.5,
+                m: 1,
+                c: packedRGB(spec.color))
+        }
+        return ZoneParam(
+            e: Effect.solid.rawValue,
+            b: Double(renderedColor.v) / 255.0,
+            s: 0.5,
+            m: 1,
+            c: packedRGB(renderedColor))
+    }
+
     private static func clamp(_ value: Double, _ lower: Double, _ upper: Double) -> Double {
         min(max(value, lower), upper)
     }

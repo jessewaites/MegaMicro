@@ -80,6 +80,26 @@ final class VOAIProtocolTests: XCTestCase {
         XCTAssertEqual(VOAI.effectParams(for: .fadeOut(total: 45)).effect, .solid)
     }
 
+    func testAmbientBreathingRunsOnFirmware() {
+        let spec = RGBRules.standard.spec(for: .thinking)
+        let param = VOAI.ambientZoneParam(
+            for: spec,
+            renderedColor: HSV(h: spec.color.h, s: spec.color.s, v: 20))
+
+        XCTAssertEqual(param.e, VOAI.Effect.breath.rawValue)
+        XCTAssertEqual(param.b, Double(spec.color.v) / 255.0, accuracy: 0.001)
+        XCTAssertEqual(param.c, VOAI.packedRGB(spec.color))
+    }
+
+    func testAmbientBlinkUsesRenderedBrightness() {
+        let spec = RGBRules.standard.spec(for: .waiting)
+        let rendered = HSV(h: spec.color.h, s: spec.color.s, v: 0)
+        let param = VOAI.ambientZoneParam(for: spec, renderedColor: rendered)
+
+        XCTAssertEqual(param.e, VOAI.Effect.solid.rawValue)
+        XCTAssertEqual(param.b, 0)
+    }
+
     func testRendererFillsPerLEDSpecs() {
         let rules = RGBRules.standard
         let frame = AnimationRenderer.frame(
@@ -89,5 +109,29 @@ final class VOAIProtocolTests: XCTestCase {
         XCTAssertEqual(frame.perLEDSpecs.count, 12)
         XCTAssertEqual(frame.perLEDSpecs[2]?.kind, rules.spec(for: .waiting).kind)
         XCTAssertEqual(frame.perLEDSpecs[0]?.kind, rules.spec(for: .idle).kind)
+    }
+
+    func testNumberedHIDOutputKeepsReportIDInPayload() {
+        let report = VOAI.frames(channel: VOAI.channelRPC, message: Data("hello".utf8))[0]
+        let prepared = HIDTransport.prepareOutputReport(
+            report,
+            reportSize: VOAI.reportSize,
+            usesLeadingReportID: true)
+
+        XCTAssertEqual(prepared.reportID, CFIndex(VOAI.reportID))
+        XCTAssertEqual(prepared.payload, report)
+    }
+
+    func testZeroHIDReportIDIsRemovedFromPayload() {
+        var report = [UInt8](repeating: 0, count: 33)
+        report[1] = 0xA5
+        let prepared = HIDTransport.prepareOutputReport(
+            report,
+            reportSize: report.count,
+            usesLeadingReportID: true)
+
+        XCTAssertEqual(prepared.reportID, 0)
+        XCTAssertEqual(prepared.payload.count, 32)
+        XCTAssertEqual(prepared.payload.first, 0xA5)
     }
 }

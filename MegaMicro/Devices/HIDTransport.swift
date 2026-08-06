@@ -151,25 +151,39 @@ final class HIDTransport {
     /// ID is a separate argument — for VIA (unnumbered reports) it's 0 and
     /// the whole buffer is data; for numbered-report firmware
     /// (`usesLeadingReportID`) byte 0 is peeled off as the id.
-    func write(_ report: [UInt8]) throws {
-        guard let device else { throw HIDError.notOpen }
+    static func prepareOutputReport(
+        _ report: [UInt8],
+        reportSize: Int,
+        usesLeadingReportID: Bool
+    ) -> (reportID: CFIndex, payload: [UInt8]) {
         var padded = report
         if padded.count < reportSize {
             padded.append(contentsOf: [UInt8](repeating: 0, count: reportSize - padded.count))
         }
         precondition(padded.count == reportSize, "raw HID reports are exactly \(reportSize) bytes")
 
-        let reportID: CFIndex
-        let payload: [UInt8]
-        if usesLeadingReportID, let first = padded.first {
-            reportID = CFIndex(first)
-            payload = Array(padded.dropFirst())
-        } else {
-            reportID = 0
-            payload = padded
+        guard usesLeadingReportID, let first = padded.first else {
+            return (0, padded)
         }
-        let result = payload.withUnsafeBufferPointer { buffer in
-            IOHIDDeviceSetReport(device, kIOHIDReportTypeOutput, reportID, buffer.baseAddress!, buffer.count)
+        // HIDAPI retains nonzero report IDs in the payload; BLE requires the same shape.
+        return first == 0
+            ? (0, Array(padded.dropFirst()))
+            : (CFIndex(first), padded)
+    }
+
+    func write(_ report: [UInt8]) throws {
+        guard let device else { throw HIDError.notOpen }
+        let prepared = Self.prepareOutputReport(
+            report,
+            reportSize: reportSize,
+            usesLeadingReportID: usesLeadingReportID)
+        let result = prepared.payload.withUnsafeBufferPointer { buffer in
+            IOHIDDeviceSetReport(
+                device,
+                kIOHIDReportTypeOutput,
+                prepared.reportID,
+                buffer.baseAddress!,
+                buffer.count)
         }
         guard result == kIOReturnSuccess else {
             throw HIDError.writeFailed(result)

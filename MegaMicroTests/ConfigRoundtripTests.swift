@@ -213,6 +213,18 @@ final class ConfigRoundtripTests: XCTestCase {
         }
     }
 
+    func testMosaicProfileUsesTerminalSafeApprovalAndAggregateUnderglow() {
+        let profile = DefaultProfiles.mosaic
+
+        XCTAssertEqual(profile.appBundleIDs, ["mosaic.com.emergent.app"])
+        XCTAssertEqual(
+            profile.action(for: .key(6), gesture: .press),
+            .keystroke(
+                chord: KeyChord(keyCode: KeyCodes.f13, modifiers: []),
+                target: .frontmost))
+        XCTAssertEqual(profile.underglow, .aggregate)
+    }
+
     func testCodexLayoutHasNoTouchStrip() {
         XCTAssertNil(CodexMicroLayout.layout.control(.touchStrip))
         XCTAssertFalse(DefaultTriggers.codexMicro.contains { $0.control == .touchStrip })

@@ -6,8 +6,9 @@ final class StateResolverTests: XCTestCase {
 
     private func event(_ state: AgentState, source: String = "claude-code",
                        session: String = "s1", cwd: String? = nil,
-                       at: Date? = nil) -> SessionEvent {
-        SessionEvent(source: source, session: session, cwd: cwd, state: state, at: at ?? t0)
+                       at: Date? = nil, parentSession: String? = nil) -> SessionEvent {
+        SessionEvent(source: source, session: session, cwd: cwd, state: state,
+                     at: at ?? t0, parentSession: parentSession)
     }
 
     func testEmptyStoreIsIdle() {
@@ -79,6 +80,19 @@ final class StateResolverTests: XCTestCase {
         XCTAssertEqual(store.resolved(underPath: "/Users/j/conductor/workspaces/beta", now: t0), .coding)
         // "alph" must not prefix-match "alpha"
         XCTAssertEqual(store.resolved(underPath: "/Users/j/conductor/workspaces/alph", now: t0), .idle)
+    }
+
+    func testChildAgentsDoNotAffectLighting() {
+        let store = SessionStore()
+        let path = "/Users/j/conductor/workspaces/alpha"
+        store.apply(event(.coding, session: "parent", cwd: path))
+        store.apply(event(.waiting, session: "child", cwd: path,
+                          parentSession: "parent"))
+
+        XCTAssertEqual(store.lightingSessions.map(\.session), ["parent"])
+        XCTAssertEqual(store.resolved(underPath: path, now: t0), .waiting)
+        XCTAssertEqual(store.resolved(
+            underPath: path, now: t0, includeChildAgents: false), .coding)
     }
 
     func testRestoreDemotesToIdleAndKeepsIdentity() {

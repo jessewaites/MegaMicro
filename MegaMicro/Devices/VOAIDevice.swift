@@ -51,11 +51,19 @@ final class VOAIDevice: KeyboardDevice {
     }
 
     func connect() throws {
-        try transport.open(
-            vendorID: VOAI.vendorID,
-            productIDs: VOAI.allPIDs,
-            usagePage: VOAI.usagePage,
-            usage: nil)
+        do {
+            try transport.open(
+                vendorID: VOAI.vendorID,
+                productIDs: VOAI.allPIDs,
+                usagePage: VOAI.usagePage,
+                usage: nil)
+        } catch {
+            try transport.open(
+                vendorID: VOAI.vendorID,
+                productIDs: VOAI.creatorMicro2PIDs,
+                usagePage: nil,
+                usage: nil)
+        }
         isConnected = true
     }
 
