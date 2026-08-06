@@ -1473,18 +1473,19 @@ final class AppState {
     /// tick — `setUnderglow` drops repeats, so this costs one message per
     /// actual change, and it means the ring is restored after anything that
     /// paints it directly (the connection test).
-    private func ambientParam(for aggregate: AgentState) -> VOAI.ZoneParam {
+    private func ambientParam(for aggregate: AgentState, renderedUnderglow: HSV) -> VOAI.ZoneParam {
         switch activeProfile.underglow {
         case .rainbowUnlessAlert:
             let alert = aggregate == .error || aggregate == .waiting
             return alert
-                ? VOAI.ZoneParam(e: VOAI.Effect.solid.rawValue, b: 1, s: 0.5, m: 1, c: 0xFF0000)
+                ? VOAI.ZoneParam(e: VOAI.Effect.solid.rawValue,
+                                 b: Double(renderedUnderglow.v) / 255.0,
+                                 s: 0.5, m: 1, c: VOAI.packedRGB(renderedUnderglow))
                 : VOAI.ZoneParam(e: VOAI.Effect.rainbow.rawValue, b: 1, s: 0.55, m: 1, c: 0xFFFFFF)
         case .aggregate:
-            let spec = activeProfile.rgbRules.spec(for: aggregate)
-            return VOAI.ZoneParam(e: VOAI.Effect.solid.rawValue,
-                                  b: Double(spec.color.v) / 255.0,
-                                  s: 0.5, m: 1, c: VOAI.packedRGB(spec.color))
+            let perimeterState: AgentState = aggregate == .coding ? .thinking : aggregate
+            let spec = activeProfile.rgbRules.spec(for: perimeterState)
+            return VOAI.ambientZoneParam(for: spec, renderedColor: renderedUnderglow)
         case .solid(let hsv):
             return VOAI.ZoneParam(e: VOAI.Effect.solid.rawValue,
                                   b: Double(hsv.v) / 255.0,
@@ -1833,10 +1834,10 @@ final class AppState {
         let now = Date()
         let t = now.timeIntervalSinceReferenceDate
         let rules = activeProfile.rgbRules
-        // Fleet aggregate: highest-priority state across agents IN the fleet
-        // (excluded agents still light their own keys, but never the halo).
+        // Fleet aggregate: highest-priority state across root agents IN the fleet.
+        // Child agents stay visible in the dashboard but never drive lighting.
         sessionStore.expire(now: now)
-        let fleetSessions = sessionStore.sessions.values.filter { !isExcludedFromFleet($0) }
+        let fleetSessions = sessionStore.lightingSessions.filter { !isExcludedFromFleet($0) }
         let aggregate = fleetSessions.map(\.state).max() ?? .idle
         let aggregateAge = fleetSessions
             .filter { $0.state == aggregate }
@@ -1853,12 +1854,14 @@ final class AppState {
                 break
             case .workspace(let id):
                 let path = workspacesRoot + "/" + id
-                let state = sessionStore.resolved(underPath: path, now: now)
+                let state = sessionStore.resolved(
+                    underPath: path, now: now, includeChildAgents: false)
                 if state != .idle, let led = layout.control(.key(slot))?.ledIndex {
                     perKey[led] = (state, 0)
                 }
             case .path(let path):
-                let state = sessionStore.resolved(underPath: path, now: now)
+                let state = sessionStore.resolved(
+                    underPath: path, now: now, includeChildAgents: false)
                 if state != .idle, let led = layout.control(.key(slot))?.ledIndex {
                     perKey[led] = (state, 0)
                 }
@@ -1885,7 +1888,8 @@ final class AppState {
             device.apply(pinnedFrame)
             hardwareDevice?.apply(pinnedFrame)
         }
-        (hardwareDevice as? VOAIDevice)?.setUnderglow(ambientParam(for: aggregate))
+        (hardwareDevice as? VOAIDevice)?.setUnderglow(
+            ambientParam(for: aggregate, renderedUnderglow: pinnedFrame.underglow))
     }
 
     // MARK: Physical keyboard

@@ -16,6 +16,7 @@ struct AgentSession: Sendable, Codable {
     var startedAt: Date
 
     var key: String { "\(source)#\(session)" }
+    var isChildAgent: Bool { parentSession != nil }
 
     // Encode `state` by wire name so GET /sessions is human-readable.
     enum CodingKeys: String, CodingKey {
@@ -169,6 +170,12 @@ final class SessionStore {
         }
     }
 
+    /// Child agents cannot ask the user for input, so they stay visible in the
+    /// dashboard without affecting physical lighting.
+    var lightingSessions: [AgentSession] {
+        sessions.values.filter { !$0.isChildAgent }
+    }
+
     /// Highest-priority state across all sessions (whole-board resolution).
     func resolvedGlobal(now: Date) -> AgentState {
         expire(now: now)
@@ -177,12 +184,14 @@ final class SessionStore {
 
     /// Highest-priority state among sessions whose cwd lives under `pathPrefix`
     /// (per-key resolution for pinned Conductor workspaces).
-    func resolved(underPath pathPrefix: String, now: Date) -> AgentState {
+    func resolved(underPath pathPrefix: String, now: Date,
+                  includeChildAgents: Bool = true) -> AgentState {
         expire(now: now)
         let normalized = pathPrefix.hasSuffix("/") ? pathPrefix : pathPrefix + "/"
         return sessions.values
-            .filter { s in
-                guard let cwd = s.cwd else { return false }
+            .filter { session in
+                guard includeChildAgents || !session.isChildAgent,
+                      let cwd = session.cwd else { return false }
                 return cwd == pathPrefix || cwd.hasPrefix(normalized)
             }
             .map(\.state)
