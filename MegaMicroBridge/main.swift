@@ -109,7 +109,15 @@ func normalize(_ root: [String: Any], args: BridgeArguments) -> NormalizedReport
     default: provider
     }
     let environment = ProcessInfo.processInfo.environment
-    let terminal: (kind: String?, session: String?, endpoint: String?) = if let id = environment["ITERM_SESSION_ID"] {
+    // cmux is checked first: it renders with libghostty and reports
+    // TERM_PROGRAM accordingly, so only CMUX_SURFACE_ID distinguishes it. That
+    // id is minted once per surface and rehydrated verbatim across restore, so
+    // it is the durable binding key. CMUX_WORKSPACE_ID is deliberately not
+    // recorded — cmux regenerates it on every restore, so a stored copy goes
+    // stale and would send a key to the wrong workspace.
+    let terminal: (kind: String?, session: String?, endpoint: String?) = if let id = environment["CMUX_SURFACE_ID"] {
+        ("cmux", id, nil)
+    } else if let id = environment["ITERM_SESSION_ID"] {
         ("iterm2", id, nil)
     } else if let id = environment["WEZTERM_PANE"] {
         ("wezterm", id, environment["WEZTERM_UNIX_SOCKET"])

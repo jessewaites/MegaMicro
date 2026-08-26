@@ -84,4 +84,42 @@ final class BridgeFixtureTests: XCTestCase {
         XCTAssertEqual(report["terminalKind"] as? String, "kitty")
         XCTAssertEqual(report["terminalSession"] as? String, "7")
     }
+
+    func testCmuxSurfaceIdentityIsForwarded() throws {
+        let report = try normalize(
+            provider: "claude", event: "PreToolUse",
+            json: #"{"session_id":"c1","cwd":"/repo"}"#,
+            environment: ["CMUX_SURFACE_ID": "83F4E6A4-5246-4DB8-A412-9CE7B059FA6C"])
+        XCTAssertEqual(report["terminalKind"] as? String, "cmux")
+        XCTAssertEqual(report["terminalSession"] as? String, "83F4E6A4-5246-4DB8-A412-9CE7B059FA6C")
+    }
+
+    // cmux draws with libghostty and reports TERM_PROGRAM to match, so the
+    // surface id has to be read before any of the generic terminal probes or a
+    // cmux session gets filed under the wrong terminal.
+    func testCmuxWinsOverTerminalProgramAndInheritedTerminalIDs() throws {
+        let report = try normalize(
+            provider: "claude", event: "PreToolUse",
+            json: #"{"session_id":"c1","cwd":"/repo"}"#,
+            environment: [
+                "CMUX_SURFACE_ID": "83F4E6A4-5246-4DB8-A412-9CE7B059FA6C",
+                "TERM_PROGRAM": "ghostty",
+                "ITERM_SESSION_ID": "w0t1p0:ABC-123",
+            ])
+        XCTAssertEqual(report["terminalKind"] as? String, "cmux")
+        XCTAssertEqual(report["terminalSession"] as? String, "83F4E6A4-5246-4DB8-A412-9CE7B059FA6C")
+    }
+
+    // cmux mints a fresh workspace id on every restore, so recording one would
+    // send the key to a workspace that no longer exists.
+    func testCmuxWorkspaceIDIsNotRecorded() throws {
+        let report = try normalize(
+            provider: "claude", event: "PreToolUse",
+            json: #"{"session_id":"c1","cwd":"/repo"}"#,
+            environment: [
+                "CMUX_SURFACE_ID": "83F4E6A4-5246-4DB8-A412-9CE7B059FA6C",
+                "CMUX_WORKSPACE_ID": "9B6920C1-6C29-4C27-A069-78CF285F932A",
+            ])
+        XCTAssertNil(report["terminalEndpoint"] as? String)
+    }
 }

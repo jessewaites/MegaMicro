@@ -12,8 +12,9 @@ enum DefaultProfiles {
     static let warpBundleIDs = ["dev.warp.Warp-Stable", "dev.warp.Warp-Preview"]
     static let kittyBundleID = "net.kovidgoyal.kitty"
     static let wezTermBundleID = "com.github.wez.wezterm"
+    static let cmuxBundleID = "com.cmuxterm.app"
 
-    static var all: [Profile] { [conductor, ghostty, iTerm2, cursor, vsCode, warp, kitty, wezTerm] }
+    static var all: [Profile] { [conductor, ghostty, iTerm2, cursor, vsCode, warp, kitty, wezTerm, cmux] }
 
     private static func terminalProfile(id: String, name: String, bundleIDs: [String],
                                         launchCommand: String,
@@ -194,6 +195,18 @@ enum DefaultProfiles {
         launchCommand: "open -a WezTerm",
         nextTab: KeyChord(keyCode: KeyCodes.rightArrow, modifiers: [.command, .shift]),
         previousTab: KeyChord(keyCode: KeyCodes.leftArrow, modifiers: [.command, .shift]),
+        nextPane: KeyChord(keyCode: KeyCodes.rightBracket, modifiers: [.command, .shift]),
+        previousPane: KeyChord(keyCode: KeyCodes.leftBracket, modifiers: [.command, .shift]))
+
+    /// cmux renders with libghostty but keeps its own shortcut table: the dial
+    /// walks its vertical workspace list (⌘⌃[ / ⌘⌃]) and the joystick walks the
+    /// surfaces inside the selected workspace (⌘⇧[ / ⌘⇧]). Exact per-agent
+    /// focusing goes through the `cmux` CLI instead — see AgentFocusService.
+    static let cmux = terminalProfile(
+        id: "cmux", name: "cmux", bundleIDs: [cmuxBundleID],
+        launchCommand: "open -a cmux",
+        nextTab: KeyChord(keyCode: KeyCodes.rightBracket, modifiers: [.command, .control]),
+        previousTab: KeyChord(keyCode: KeyCodes.leftBracket, modifiers: [.command, .control]),
         nextPane: KeyChord(keyCode: KeyCodes.rightBracket, modifiers: [.command, .shift]),
         previousPane: KeyChord(keyCode: KeyCodes.leftBracket, modifiers: [.command, .shift]))
 }

@@ -93,6 +93,8 @@ that the provider has a native integration.
 - **Kitty** — exact live-window focus through Kitty remote control when `KITTY_LISTEN_ON` is
   enabled; project-window fallback otherwise.
 - **WezTerm** — exact pane focus through `WEZTERM_PANE` and `wezterm cli activate-pane`.
+- **cmux** — exact surface focus through `CMUX_SURFACE_ID` and the `cmux` CLI, surviving a
+  quit-and-reopen; requires cmux's automation socket to be opened to automation tools.
 - **OpenCode Desktop** — native provider labeling, installation detection, and project routing
   through OpenCode's supported desktop deep link.
 - **Cursor** — native user-level lifecycle hooks for the IDE and CLI, project-window focus for
@@ -317,6 +319,21 @@ control socket, then focuses that exact Kitty window. Kitty exact focus requires
 to be enabled with a listen socket; without it, MegaMicro safely falls back to the matching
 project window and application.
 
+**cmux** is the one terminal that hands MegaMicro a durable identity rather than a heuristic.
+Every cmux surface exports `CMUX_SURFACE_ID`, and cmux mints that id once and rehydrates it
+verbatim when a session is restored — so a key still points at the right terminal after cmux has
+been quit and reopened. MegaMicro records it and calls `cmux focus-panel --panel <id>`, which
+resolves the surface globally. The workspace id is deliberately not stored: cmux regenerates it
+on every restore, so a saved copy would go stale. Because an agent's binding is to its surface
+rather than to the active profile, a cmux-hosted agent is focused correctly even while the board
+is on a different terminal profile.
+
+cmux ships with its automation socket restricted to cmux's own process tree, which MegaMicro is
+not part of. Exact focus therefore needs cmux's **Settings → Automation → socket access** set to
+**Automation tools**, the same setting its Claude and Cursor hook integrations use. Until then
+MegaMicro falls back to raising the cmux window and says so in the activity log rather than
+failing silently.
+
 The **Visual Studio Code** profile focuses the editor window matching the agent's reported
 workspace. VS Code does not expose an external API for selecting a particular existing
 integrated-terminal instance, so MegaMicro does not create a duplicate terminal to imitate
@@ -492,6 +509,35 @@ a fresh enumeration (a full restart is not required).
 - Re-add the permission after rebuilding or moving the app.
 - Confirm the Work Louder keymap matches MegaMicro's trigger table.
 - Open Permissions and use **Retry Event Tap**.
+
+### The Creator Micro 2 joystick does not produce events
+
+The joystick is not a normal macOS game controller, even though the board's composite USB
+descriptor contains game-controller-like axes. `GameController.framework` may report **no
+controller detected**. The reliable joystick data arrives through the firmware's numbered
+`v.oai` raw-HID report on the same composite device that macOS identifies primarily as a
+keyboard.
+
+This has two important consequences:
+
+- **Input Monitoring is required for the exact MegaMicro app that is running.** macOS can show
+  the board in `ioreg` and its input-report counter can increase while silently hiding it from
+  `IOHIDManager`. MegaMicro then logs `no keyboard yet` and no joystick events appear.
+- Use a consistently signed app at a stable path, preferably `/Applications/MegaMicro.app`.
+  An ad-hoc build (`CODE_SIGNING_ALLOWED=NO`) or a build launched from a changing DerivedData or
+  `/tmp` path does not share the installed app's privacy identity. Input Monitoring may look
+  enabled for MegaMicro while the running development binary still has no access. Build with the
+  configured Apple Development identity, replace the installed app, then remove/re-add or toggle
+  MegaMicro under **System Settings → Privacy & Security → Input Monitoring** and relaunch it.
+
+Layer changes are not the first thing to debug here. If none of the layers produce a joystick log,
+first check Diagnostics for a successful `connected: Codex Micro family (v.oai protocol)` entry.
+Keyboard-style buttons can still work in the focused app while raw joystick events remain blocked,
+which is a permission clue rather than proof that the HID connection is healthy.
+
+Implementation note: Creator Micro 2 (`303A:8297`) exposes `v.oai` as report ID 6, but its primary
+usage is Keyboard. Device discovery must therefore fall back from a vendor-usage match to the
+verified VID/PID composite device; requiring the vendor usage page alone misses real hardware.
 
 ### An agent never appears
 

@@ -37,7 +37,7 @@ struct LayoutSettings: Codable, Hashable, Sendable {
 
 /// The whole persisted configuration, one versioned Codable document.
 struct AppConfig: Codable, Hashable, Sendable {
-    static let currentVersion = 30
+    static let currentVersion = 31
 
     var version: Int = AppConfig.currentVersion
     var webhookPort: UInt16 = 48802
@@ -438,6 +438,10 @@ final class ConfigStore {
             for profile in additions where !config.profiles.contains(where: { $0.id == profile.id }) {
                 config.profiles.append(profile)
             }
+        }
+        if config.version < 31,
+           !config.profiles.contains(where: { $0.id == DefaultProfiles.cmux.id }) {
+            config.profiles.append(DefaultProfiles.cmux)
         }
         config.version = AppConfig.currentVersion
     }

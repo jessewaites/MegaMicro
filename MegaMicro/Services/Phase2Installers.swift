@@ -71,13 +71,14 @@ final class OpenCodeIntegration: ProviderIntegration {
             if (!state) return
             const session = p.sessionID ?? p.session_id ?? p.session?.id ?? p.id ?? `opencode-${process.pid}`
             const cwd = p.directory ?? p.cwd ?? directory
-            const terminalKind = process.env.ITERM_SESSION_ID ? "iterm2"
+            const terminalKind = process.env.CMUX_SURFACE_ID ? "cmux"
+              : process.env.ITERM_SESSION_ID ? "iterm2"
               : process.env.WEZTERM_PANE ? "wezterm"
               : process.env.KITTY_WINDOW_ID ? "kitty"
               : process.env.TERM_PROGRAM === "vscode" ? "vscode"
               : (process.env.TERM_PROGRAM?.toLowerCase().includes("warp") || process.env.WARP_IS_LOCAL_SHELL) ? "warp"
               : undefined
-            const terminalSession = process.env.ITERM_SESSION_ID ?? process.env.WEZTERM_PANE ?? process.env.KITTY_WINDOW_ID
+            const terminalSession = process.env.CMUX_SURFACE_ID ?? process.env.ITERM_SESSION_ID ?? process.env.WEZTERM_PANE ?? process.env.KITTY_WINDOW_ID
             const terminalEndpoint = process.env.WEZTERM_UNIX_SOCKET ?? process.env.KITTY_LISTEN_ON
             try {
               await fetch("http://127.0.0.1:\(port)/state", {
