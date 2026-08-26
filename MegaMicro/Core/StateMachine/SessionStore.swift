@@ -140,6 +140,7 @@ final class SessionStore {
             session.task = event.task
         }
         sessions[session.key] = session
+        supersedeDirectoryKeyedTwin(of: session)
         if sessions.count > Self.maximumSessions {
             // Prefer discarding the oldest quiet session. If every agent is
             // active, still enforce the hard memory/roster bound.
@@ -152,6 +153,32 @@ final class SessionStore {
             else if let oldest = sessions.values.min(by: { $0.updatedAt < $1.updatedAt }) {
                 sessions.removeValue(forKey: oldest.key)
             }
+        }
+    }
+
+    /// Drops the placeholder record an older hook generation left behind for
+    /// the same agent.
+    ///
+    /// Hooks written before MegaMicro shipped its bridge keyed a session on
+    /// `$PWD` when the provider gave them no id, so upgrading leaves two rows
+    /// for one running agent: the live one under its real session id, and a
+    /// directory-keyed ghost that can never report again. The ghost still
+    /// takes a key, and because it carries no terminal identity that key can
+    /// never reach the agent — so it is worth retiring the moment its
+    /// replacement identifies itself.
+    ///
+    /// Matched on the directory alone and only against a key that literally is
+    /// a path, which is the one shape the old fallback could produce. Case is
+    /// ignored: the shell reports whatever casing the user typed, and macOS
+    /// filesystems are usually case-insensitive.
+    private func supersedeDirectoryKeyedTwin(of session: AgentSession) {
+        guard let cwd = session.cwd, session.session != cwd else { return }
+        for (key, candidate) in sessions
+        where key != session.key
+            && candidate.source == session.source
+            && candidate.session == candidate.cwd
+            && candidate.cwd?.compare(cwd, options: .caseInsensitive) == .orderedSame {
+            sessions.removeValue(forKey: key)
         }
     }
 

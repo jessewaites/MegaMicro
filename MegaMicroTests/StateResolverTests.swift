@@ -104,6 +104,46 @@ final class StateResolverTests: XCTestCase {
         XCTAssertNil(AgentState(wireName: "bogus"))
     }
 
+    // Upgrading from the pre-bridge hooks leaves a directory-keyed ghost of
+    // every running agent. It carries no terminal identity, so a key bound to
+    // it can never reach the agent — it has to yield to the real record.
+    func testDirectoryKeyedGhostYieldsToTheRealSession() {
+        let store = SessionStore()
+        let path = "/Users/j/code/Project"
+        store.apply(event(.idle, session: path, cwd: path))
+        XCTAssertEqual(store.sessions.count, 1)
+        store.apply(event(.coding, session: "4e14a00e", cwd: path))
+        XCTAssertEqual(store.sessions.values.map(\.session), ["4e14a00e"])
+    }
+
+    // The old hook keyed on whatever casing the shell reported, which is not
+    // always the casing the new one reports for the same directory.
+    func testGhostIsRetiredEvenWhenTheDirectoryCasingDiffers() {
+        let store = SessionStore()
+        store.apply(event(.idle, session: "/Users/j/code/Project", cwd: "/Users/j/code/Project"))
+        store.apply(event(.coding, session: "4e14a00e", cwd: "/Users/j/Code/Project"))
+        XCTAssertEqual(store.sessions.values.map(\.session), ["4e14a00e"])
+    }
+
+    func testUnrelatedProjectsAndOtherProvidersAreLeftAlone() {
+        let store = SessionStore()
+        store.apply(event(.idle, session: "/Users/j/code/Other", cwd: "/Users/j/code/Other"))
+        store.apply(event(.idle, source: "codex", session: "/Users/j/code/Project",
+                          cwd: "/Users/j/code/Project"))
+        store.apply(event(.coding, session: "4e14a00e", cwd: "/Users/j/code/Project"))
+        XCTAssertEqual(store.sessions.count, 3)
+    }
+
+    // A live agent whose provider genuinely reports no id still keys on its
+    // directory. Its own later reports must not retire it.
+    func testADirectoryKeyedSessionDoesNotRetireItself() {
+        let store = SessionStore()
+        let path = "/Users/j/code/Project"
+        store.apply(event(.idle, session: path, cwd: path))
+        store.apply(event(.coding, session: path, cwd: path))
+        XCTAssertEqual(store.sessions.values.map(\.session), [path])
+    }
+
     func testSessionStoreIsBounded() {
         let store = SessionStore()
         for index in 0..<(SessionStore.maximumSessions + 50) {

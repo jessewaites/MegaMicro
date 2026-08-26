@@ -104,20 +104,14 @@ final class AgentFocusService {
             return
         }
 
-        if activeProfileID == "iterm2",
-           !isConductorWorkspace,
-           focusITerm2Session(session, workingDirectory: session.cwd,
-                              label: session.agent ?? project) {
-            return
-        }
-
-        if activeProfileID == "wezterm", !isConductorWorkspace,
-           focusWezTermPane(session, label: session.agent ?? project) {
-            return
-        }
-
-        if activeProfileID == "kitty", !isConductorWorkspace,
-           focusKittyWindow(session, label: session.agent ?? project) {
+        // A session that recorded which terminal it started in is sent back
+        // there whatever profile the board is on. A real fleet spans several
+        // terminals at once — Conductor here, Ghostty there, cmux alongside
+        // them — so the active profile says which key layout is loaded, not
+        // where any one agent lives. Only sessions that recorded nothing fall
+        // back to asking the profile.
+        if !isConductorWorkspace,
+           focusRecordedTerminal(session, label: session.agent ?? project) {
             return
         }
 
@@ -125,13 +119,28 @@ final class AgentFocusService {
         // AppleScript with their live working directories. This is an exact
         // target, unlike window-title matching, and `focus` also raises the
         // owning window when Ghostty is behind another application.
-        if activeProfileID == "ghostty",
-           !isConductorWorkspace,
+        //
+        // Ghostty tabs carry no id a hook can inherit, so they are only ever
+        // found by directory. That search is safe to run unprompted — it fails
+        // closed when no tab is in the agent's directory — so it is tried for
+        // any session with no recorded terminal, not just under its profile.
+        if !isConductorWorkspace,
+           activeProfileID == "ghostty" || isRunning(DefaultProfiles.ghosttyBundleID),
+           session.terminalKind == nil,
            let cwd = session.cwd,
            focusGhosttyTerminal(
                 workingDirectory: cwd,
                 matchingTitles: [project, session.agent].compactMap { $0 },
                 label: session.agent ?? project) {
+            return
+        }
+
+        // iTerm2 keeps its own directory fallback for sessions saved before
+        // hooks recorded a terminal id, so it stays tied to its profile.
+        if activeProfileID == "iterm2",
+           !isConductorWorkspace,
+           focusITerm2Session(session, workingDirectory: session.cwd,
+                              label: session.agent ?? project) {
             return
         }
 
@@ -152,6 +161,23 @@ final class AgentFocusService {
             return
         }
         activate(bundleID: bundleID, label: session.agent ?? project)
+    }
+
+    /// Routes a session to the terminal its hook recorded. Each backend needs
+    /// an id the agent's process could inherit, so this only ever fires for a
+    /// session that carries one — never on a guess.
+    private func focusRecordedTerminal(_ session: AgentSession, label: String) -> Bool {
+        switch session.terminalKind {
+        case "cmux": focusCmuxSurface(session, label: label)
+        case "wezterm": focusWezTermPane(session, label: label)
+        case "kitty": focusKittyWindow(session, label: label)
+        case "iterm2": focusITerm2Session(session, workingDirectory: session.cwd, label: label)
+        default: false
+        }
+    }
+
+    private func isRunning(_ bundleID: String) -> Bool {
+        !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty
     }
 
     private func focusOpenCodeDesktop(workingDirectory path: String, label: String) -> Bool {
@@ -269,6 +295,39 @@ final class AgentFocusService {
         return true
     }
 
+    /// cmux binds an agent to a surface id that survives quit-and-reopen, so a
+    /// key press can address the exact terminal instead of ranking tabs by
+    /// working directory the way the Ghostty path has to.
+    ///
+    /// The workspace is deliberately left out of the request. cmux mints a new
+    /// workspace id on every restore, so naming one would break after a
+    /// relaunch; the surface id alone resolves globally.
+    private func focusCmuxSurface(_ session: AgentSession, label: String) -> Bool {
+        guard session.terminalKind == "cmux", let surfaceID = session.terminalSession,
+              let executable = executableURL(Self.cmuxExecutablePaths) else { return false }
+        guard run(executable, arguments: ["focus-panel", "--panel", surfaceID]) else {
+            // cmux ships with its automation socket restricted to its own
+            // process tree, and MegaMicro is not in it. Say so once per press
+            // rather than silently falling back to a plain app activation.
+            log("cmux refused the focus request for \(label) — set Settings → "
+                + "Automation → socket access to \"Automation tools\" so MegaMicro can reach it")
+            return false
+        }
+        activate(bundleID: DefaultProfiles.cmuxBundleID, label: label)
+        log("focused cmux surface for \(label)")
+        return true
+    }
+
+    /// The bundled CLI comes first: it is present in every install, whereas the
+    /// `/usr/local/bin` symlink is created only if the user opts into it.
+    private static let cmuxExecutablePaths = [
+        "/Applications/cmux.app/Contents/Resources/bin/cmux",
+        "/usr/local/bin/cmux",
+        "/opt/homebrew/bin/cmux",
+        NSString(string: "~/.cmux/bin/cmux").expandingTildeInPath,
+        NSString(string: "~/Applications/cmux.app/Contents/Resources/bin/cmux").expandingTildeInPath,
+    ]
+
     private func executableURL(_ paths: [String]) -> URL? {
         paths.first(where: { FileManager.default.isExecutableFile(atPath: $0) })
             .map(URL.init(fileURLWithPath:))
@@ -300,6 +359,7 @@ final class AgentFocusService {
         case "kitty": DefaultProfiles.kittyBundleID
         case "wezterm": DefaultProfiles.wezTermBundleID
         case "ghostty": DefaultProfiles.ghosttyBundleID
+        case "cmux": DefaultProfiles.cmuxBundleID
         default: nil
         }
     }
@@ -491,8 +551,21 @@ final class AgentFocusService {
         up.post(tap: .cghidEventTap)
     }
 
+    /// Apps that can plausibly be hosting an agent: the terminals and editors
+    /// MegaMicro ships profiles for, plus the desktop agent clients.
+    ///
+    /// Title matching is a last resort and a project name is a very common
+    /// substring — a chat window, a browser tab, or a notes app discussing the
+    /// project all match it. Restricting the search to known hosts keeps a key
+    /// press from raising an app that could never contain the agent.
+    private static var agentHostBundleIDs: Set<String> {
+        Set(DefaultProfiles.all.flatMap(\.appBundleIDs))
+            .union(openCodeDesktopBundleIDs)
+    }
+
     private func raiseWindow(matching terms: [String]) -> Bool {
         let needles = terms.map { $0.lowercased() }.filter { !$0.isEmpty }
+        let hosts = Self.agentHostBundleIDs
         guard !needles.isEmpty,
               let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
                                                        kCGNullWindowID) as? [[String: Any]] else { return false }
@@ -502,6 +575,8 @@ final class AgentFocusService {
                   let pidNumber = window[kCGWindowOwnerPID as String] as? NSNumber else { continue }
             let pid = pid_t(pidNumber.intValue)
             guard pid != ProcessInfo.processInfo.processIdentifier else { continue }
+            guard let bundleID = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier,
+                  hosts.contains(bundleID) else { continue }
             let appElement = AXUIElementCreateApplication(pid)
             var value: CFTypeRef?
             guard AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &value) == .success,
