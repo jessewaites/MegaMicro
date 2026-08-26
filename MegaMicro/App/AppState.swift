@@ -1853,22 +1853,23 @@ final class AppState {
         // Keys glow ONLY for explicitly assigned agents (workspace or folder
         // bindings). Unassigned agents wait in the chip strip until placed —
         // nothing sneaks onto the board on its own.
+        //
+        // An agent key with nothing on it goes fully dark. An assigned key is
+        // always painted, idle included, so resting agents keep the dim-white
+        // "occupied" glow — that contrast is the only way to read at a glance
+        // which keys are free. `ledKeySlots` covers just the agent-hosting
+        // keys, so the printed action row keeps its own idle lighting.
         var perKey: [Int: (state: AgentState, age: TimeInterval)] = [:]
+        var unlit: Set<Int> = []
         for slot in ledKeySlots {
+            guard let led = layout.control(.key(slot))?.ledIndex else { continue }
             switch activeLayoutSettings.keyBindings[slot] {
             case nil, .off:
-                break
+                unlit.insert(led)
             case .workspace(let id):
-                let path = workspacesRoot + "/" + id
-                let state = sessionStore.resolved(underPath: path, now: now)
-                if state != .idle, let led = layout.control(.key(slot))?.ledIndex {
-                    perKey[led] = (state, 0)
-                }
+                perKey[led] = (sessionStore.resolved(underPath: workspacesRoot + "/" + id, now: now), 0)
             case .path(let path):
-                let state = sessionStore.resolved(underPath: path, now: now)
-                if state != .idle, let led = layout.control(.key(slot))?.ledIndex {
-                    perKey[led] = (state, 0)
-                }
+                perKey[led] = (sessionStore.resolved(underPath: path, now: now), 0)
             }
         }
 
@@ -1877,6 +1878,7 @@ final class AppState {
             perKeyStates: perKey, rules: rules,
             underglowMode: activeProfile.underglow,
             steadyGlow: config.steadyGlow,
+            unlitLEDs: unlit,
             ledCount: layout.ledCount, t: t)
         guard !lightShowRunning else { return }
         let pinnedFrame = applyPinnedColors(to: frame)
