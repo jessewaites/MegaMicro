@@ -6,6 +6,46 @@ import XCTest
 /// LEDs, so "off" means writing darkness into that stored block — and being
 /// able to hand the user's own colours back when they switch it on again.
 final class DeviceLightsTests: XCTestCase {
+
+    // An empty agent key has to be readable as empty. Idle is a dim white so
+    // a resting agent still reads as occupied, which only means something if
+    // the keys holding nothing are actually dark.
+    func testUnassignedKeysGoDarkWhileIdleAgentsKeepTheirGlow() {
+        let frame = AnimationRenderer.frame(
+            aggregate: .idle, aggregateAge: 0,
+            perKeyStates: [0: (.idle, 0)],
+            rules: .standard,
+            unlitLEDs: [1, 2],
+            ledCount: 4, t: 0)
+        XCTAssertEqual(frame.perLED[1], .off)
+        XCTAssertEqual(frame.perLED[2], .off)
+        XCTAssertEqual(frame.perLED[0], RGBRules.standard.spec(for: .idle).color,
+                       "an assigned but resting agent still reads as occupied")
+        XCTAssertEqual(frame.perLED[3], RGBRules.standard.spec(for: .idle).color,
+                       "keys never offered as agent slots keep their idle lighting")
+    }
+
+    // A key that is both assigned and listed unlit must light: an agent that
+    // arrives on a key outranks a stale view of it being empty.
+    func testAnAssignedKeyOutranksBeingListedUnlit() {
+        let frame = AnimationRenderer.frame(
+            aggregate: .waiting, aggregateAge: 0,
+            perKeyStates: [1: (.waiting, 0)],
+            rules: .standard,
+            unlitLEDs: [1],
+            ledCount: 2, t: 0)
+        XCTAssertNotEqual(frame.perLED[1], .off)
+    }
+
+    // On-device firmware renders from the semantic specs, not the host colors,
+    // so a dark key has to be dark in both or the board disagrees with itself.
+    func testUnlitKeysAreDarkInTheOnDeviceSpecsToo() {
+        let frame = AnimationRenderer.frame(
+            aggregate: .idle, aggregateAge: 0,
+            perKeyStates: [:], rules: .standard,
+            unlitLEDs: [0], ledCount: 2, t: 0)
+        XCTAssertEqual(frame.perLEDSpecs[0]?.color, .off)
+    }
     private func config(lights: [[String: Any]?]) -> [String: Any] {
         let layers: [[String: Any]] = lights.enumerated().map { index, block in
             var layer: [String: Any] = ["id": index, "name": "Layer \(index + 1)"]

@@ -37,11 +37,17 @@ enum AnimationRenderer {
         return spec.color.scaled(brightness: intensity)
     }
 
-    /// Whole frame. One agent = one key: unassigned LEDs rest at idle; each
-    /// entry in `perKeyStates` (ledIndex → state, age) lights its own key.
-    /// `aggregate` (highest-priority state across all agents) is rendered
-    /// only into `wholeBoard`, the fallback for hardware without per-key
-    /// control — it never floods the per-key view.
+    /// Whole frame. One agent = one key: each entry in `perKeyStates`
+    /// (ledIndex → state, age) lights its own key, and every LED in
+    /// `unlitLEDs` is held dark. `aggregate` (highest-priority state across
+    /// all agents) is rendered only into `wholeBoard`, the fallback for
+    /// hardware without per-key control — it never floods the per-key view.
+    ///
+    /// Darkness is what makes an empty key readable. Idle is deliberately a
+    /// dim white rather than off so an occupied-but-resting agent still reads
+    /// as occupied — which only tells you anything if the keys holding no
+    /// agent are actually off. Keys that always do something (the printed
+    /// action row) are never passed here, so they keep their idle glow.
     static func frame(
         aggregate: AgentState,
         aggregateAge: TimeInterval,
@@ -49,6 +55,7 @@ enum AnimationRenderer {
         rules: RGBRules,
         underglowMode: UnderglowMode = .aggregate,
         steadyGlow: Bool = false,
+        unlitLEDs: Set<Int> = [],
         ledCount: Int,
         t: TimeInterval
     ) -> EffectFrame {
@@ -61,6 +68,10 @@ enum AnimationRenderer {
         var specs: [Int: LEDSpec] = [:]
         for index in 0..<ledCount {
             specs[index] = LEDSpec(color: idleSpec.color, kind: renderKind(idleSpec.kind))
+        }
+        for index in unlitLEDs where index >= 0 && index < ledCount {
+            leds[index] = .off
+            specs[index] = LEDSpec(color: .off, kind: .solid)
         }
         for (index, entry) in perKeyStates where index >= 0 && index < ledCount {
             leds[index] = color(for: entry.state, rules: rules, t: t, age: entry.age, steadyGlow: steadyGlow)

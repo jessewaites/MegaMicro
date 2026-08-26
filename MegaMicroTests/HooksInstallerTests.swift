@@ -47,6 +47,56 @@ final class HooksInstallerTests: XCTestCase {
         XCTAssertTrue(installer.isInstalled())
     }
 
+    // Hooks run the installed bridge by path from every agent session on the
+    // machine. Hardening the tree must not clear its exec bit: it hardens
+    // nothing and breaks every session with "Permission denied".
+    func testHardeningKeepsInstalledExecutablesRunnable() throws {
+        let bin = dir.appendingPathComponent("bin")
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        let tool = bin.appendingPathComponent("MegaMicroBridge")
+        try Data("#!/bin/sh\nexit 0\n".utf8).write(to: tool)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: tool.path)
+        let data = dir.appendingPathComponent("config.json")
+        try Data("{}".utf8).write(to: data)
+
+        PrivateFileStore.hardenExistingTree(dir)
+
+        XCTAssertTrue(FileManager.default.isExecutableFile(atPath: tool.path))
+        XCTAssertEqual(mode(of: tool), 0o700)
+        XCTAssertEqual(mode(of: data), 0o600, "non-executables stay owner-read/write only")
+    }
+
+    private func mode(of url: URL) -> Int {
+        let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+        return (attributes?[.posixPermissions] as? NSNumber)?.intValue ?? -1
+    }
+
+    // The pre-bridge curl hooks carry the same marker, so they report as
+    // installed while silently omitting the terminal identity exact focus
+    // needs. They have to be distinguishable from a healthy install.
+    func testPreBridgeCurlHooksReportAsStale() throws {
+        try writeSettings(["hooks": ["Stop": [["hooks": [[
+            "type": "command",
+            "command": "curl -m 2 -s -X POST http://127.0.0.1:48802/state -d '{}' || true #megamicro",
+        ]]]]]])
+        XCTAssertTrue(installer.isInstalled())
+        XCTAssertTrue(installer.isStale())
+    }
+
+    func testFreshInstallIsNotStale() throws {
+        try installer.install()
+        XCTAssertTrue(installer.isInstalled())
+        XCTAssertFalse(installer.isStale())
+    }
+
+    func testUnmarkedForeignHooksAreNeverJudgedStale() throws {
+        try writeSettings(["hooks": ["Stop": [["hooks": [[
+            "type": "command", "command": "somebody-elses-tool --report",
+        ]]]]]])
+        XCTAssertFalse(installer.isInstalled())
+        XCTAssertFalse(installer.isStale())
+    }
+
     func testInstallIsIdempotent() throws {
         try writeSettings([:])
         try installer.install()

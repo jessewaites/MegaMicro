@@ -85,6 +85,31 @@ final class HooksInstaller {
         }
     }
 
+    /// Whether the installed hooks were written by an older MegaMicro.
+    ///
+    /// A marked hook keeps its marker forever, so hooks from a build that
+    /// predates the bridge still report as installed while calling a command
+    /// this build no longer generates. They keep reporting agent states, which
+    /// is why the staleness goes unnoticed — but they never send the terminal
+    /// identity that exact focus depends on, so an agent key lands on the app
+    /// instead of its own tab. Worth telling apart from a healthy install.
+    func isStale() -> Bool {
+        let settings = loadSettings()
+        guard let hooks = settings["hooks"] as? [String: Any] else { return false }
+        let bridgePath = (bridgeURL ?? BridgeLocator.installedURL).path
+        return hooks.values.contains { value in
+            guard let entries = value as? [[String: Any]] else { return false }
+            return entries.contains { entry in
+                guard let inner = entry["hooks"] as? [[String: Any]] else { return false }
+                return inner.contains { hook in
+                    guard let command = hook["command"] as? String,
+                          command.contains(Self.marker) else { return false }
+                    return !command.contains(bridgePath)
+                }
+            }
+        }
+    }
+
     // MARK: Install / uninstall
 
     func install() throws {

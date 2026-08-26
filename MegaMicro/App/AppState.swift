@@ -753,6 +753,11 @@ final class AppState {
         PrivateFileStore.hardenExistingTree(
             FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("MegaMicro"))
+        // Repairs an installed bridge left non-executable by an earlier build,
+        // which would otherwise fail every hook on the machine with
+        // "Permission denied" until hooks were reinstalled by hand. Idempotent
+        // — it rewrites only when the bundled bridge actually differs.
+        try? BridgeLocator.ensureInstalled()
         // Subsystem kill-switches for fault isolation:
         //   open MegaMicro.app --args -disable render,input,webhook,watcher
         let disabled = Set((UserDefaults.standard.string(forKey: "disable") ?? "")
@@ -1129,6 +1134,7 @@ final class AppState {
     @ObservationIgnored private(set) lazy var cursorInstaller = CursorIntegration(port: config.webhookPort)
     @ObservationIgnored private(set) lazy var qwenInstaller = QwenIntegration(port: config.webhookPort)
     var hooksInstalled = false
+    var hooksStale = false
     var codexHooksInstalled = false
     var codexFeatureEnabled = false
     var codexDetected = false
@@ -1145,6 +1151,7 @@ final class AppState {
 
     func refreshHooksStatus() {
         hooksInstalled = hooksInstaller.isInstalled()
+        hooksStale = hooksInstalled && hooksInstaller.isStale()
         codexHooksInstalled = codexInstaller.isInstalled()
         codexFeatureEnabled = codexInstaller.featureEnabled()
         codexDetected = codexInstaller.codexInstalled

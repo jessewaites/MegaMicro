@@ -32,6 +32,14 @@ enum PrivateFileStore {
         for old in matching.dropFirst(limit) { try? FileManager.default.removeItem(at: old) }
     }
 
+    /// Re-applies owner-only permissions across an existing tree.
+    ///
+    /// Executability is preserved rather than stripped. The tree holds the
+    /// installed hook bridge as well as data, and hooks run it by path from
+    /// every agent session on the machine — clearing its exec bit does not
+    /// harden anything, it breaks every session with "Permission denied"
+    /// until the file is repaired. Owner-only is the security property here,
+    /// and 0700 has it just as fully as 0600.
     static func hardenExistingTree(_ root: URL) {
         guard FileManager.default.fileExists(atPath: root.path) else { return }
         try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: root.path)
@@ -39,8 +47,10 @@ enum PrivateFileStore {
             at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) else { return }
         for case let url as URL in enumerator {
             let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+            let isExecutable = !isDirectory && FileManager.default.isExecutableFile(atPath: url.path)
             try? FileManager.default.setAttributes(
-                [.posixPermissions: isDirectory ? 0o700 : 0o600], ofItemAtPath: url.path)
+                [.posixPermissions: (isDirectory || isExecutable) ? 0o700 : 0o600],
+                ofItemAtPath: url.path)
         }
     }
 }

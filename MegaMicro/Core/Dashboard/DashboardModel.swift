@@ -58,9 +58,11 @@ final class DashboardModel {
         renderTimer = timer
     }
 
+    /// Agent-hosting keys only, matching the Mac renderer — the printed action
+    /// row never holds an agent and keeps its own idle lighting.
     private var ledKeySlots: [Int] {
         layout.controls.compactMap { spec in
-            guard spec.kind == .key, spec.ledIndex != nil,
+            guard spec.kind == .key, spec.ledIndex != nil, spec.hostsAgents,
                   spec.id.rawValue.hasPrefix("key."),
                   let n = Int(spec.id.rawValue.dropFirst("key.".count)) else { return nil }
             return n
@@ -85,22 +87,24 @@ final class DashboardModel {
             .map { now.timeIntervalSince($0.updatedAt) }
             .min() ?? 0
         var perKey: [Int: (state: AgentState, age: TimeInterval)] = [:]
+        var unlit: Set<Int> = []
         for slot in ledKeySlots {
+            guard let led = layout.control(.key(slot))?.ledIndex else { continue }
             let path: String
             switch keyBindings[slot] {
             case .workspace(let id): path = workspacesRoot + "/" + id
             case .path(let p): path = p
-            case nil, .off: continue
+            case nil, .off:
+                unlit.insert(led)
+                continue
             }
-            let state = resolvedState(under: path)
-            if state != .idle, let led = layout.control(.key(slot))?.ledIndex {
-                perKey[led] = (state, 0)
-            }
+            perKey[led] = (resolvedState(under: path), 0)
         }
         return AnimationRenderer.frame(
             aggregate: aggregate, aggregateAge: aggregateAge,
             perKeyStates: perKey, rules: rgbRules, underglowMode: underglow,
             steadyGlow: steadyGlow,
+            unlitLEDs: unlit,
             ledCount: layout.ledCount, t: t)
     }
 

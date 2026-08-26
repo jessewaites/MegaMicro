@@ -38,10 +38,20 @@ struct HooksPane: View {
             }
             Section {
                 LabeledContent("Status") {
-                    Label(
-                        appState.hooksInstalled ? "Installed" : "Not installed",
-                        systemImage: appState.hooksInstalled ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(appState.hooksInstalled ? .green : .secondary)
+                    if appState.hooksStale {
+                        Label("Installed — needs reinstalling", systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                    } else {
+                        Label(
+                            appState.hooksInstalled ? "Installed" : "Not installed",
+                            systemImage: appState.hooksInstalled ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(appState.hooksInstalled ? .green : .secondary)
+                    }
+                }
+                if appState.hooksStale {
+                    Text("These hooks were written by an earlier version of MegaMicro. They still report agent states, but not which terminal each agent is running in, so pressing an agent key raises the app instead of its own tab. Reinstall to fix it.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
                 }
                 LabeledContent("Webhook") {
                     if appState.webhookError == nil {
