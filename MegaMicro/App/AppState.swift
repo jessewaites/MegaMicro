@@ -542,6 +542,9 @@ final class AppState {
     private(set) var renderedFleetState: AgentState = .idle
     /// Which pane the config window shows (also driven by ⌘1–⌘9).
     var activeSection: ConfigSection = .dashboard
+    /// Which device the Manage Devices pane is showing. Purely a view
+    /// choice — both devices stay connected regardless.
+    var deviceTab: DeviceTab = .keyboard
     /// Debug: when on, every mouse/key event reaching the app is logged to
     /// the Activity feed — proves whether input is delivered at all.
     /// Enable with: open MegaMicro.app --args -inputDebug YES
@@ -744,6 +747,7 @@ final class AppState {
     var listenerMode: KeystrokeListener.Mode = .off
     var accessibilityGranted = false
     var inputMonitoringGranted = false
+    var microphoneGranted = false
 
     init(configStore: ConfigStore = ConfigStore(fileURL: ConfigStore.defaultURL)) {
         self.configStore = configStore
@@ -773,6 +777,7 @@ final class AppState {
         restoreRoster()
         applyAppearance()
         if !disabled.contains("hardware") { autoConnectHardware() }
+        if !disabled.contains("mic") { startMicPipeline() }
         AppState.shared = self
     }
 
@@ -955,6 +960,7 @@ final class AppState {
     func refreshPermissions() {
         accessibilityGranted = PermissionsService.accessibilityGranted()
         inputMonitoringGranted = PermissionsService.inputMonitoringGranted()
+        microphoneGranted = PermissionsService.microphoneGranted()
         // The moment Accessibility comes through, bring the tap up — no
         // manual "Retry" needed.
         if accessibilityGranted, listenerMode != .tap {
@@ -1615,6 +1621,9 @@ final class AppState {
         let release = 0.30
 
         if distance < release {
+            if lastJoystickGesture != nil {
+                postPongJoystickDirection("center")
+            }
             lastJoystickGesture = nil
             return
         }
@@ -1623,8 +1632,20 @@ final class AppState {
         guard gesture != lastJoystickGesture else { return }
         lastJoystickGesture = gesture
         log("🕹 joystick \(gesture.rawValue)")
+        postPongJoystickDirection(gesture.rawValue)
         controlActivated(.joystick, gesture: gesture, phase: .down, fromHardware: true)
         controlActivated(.joystick, gesture: gesture, phase: .up, fromHardware: true)
+    }
+
+    /// AgentClock runs as a separate app, so publish the physical stick state
+    /// directly instead of relying on synthetic keyboard events.
+    private func postPongJoystickDirection(_ direction: String) {
+        DistributedNotificationCenter.default().postNotificationName(
+            Notification.Name("com.jessewaites.megamicro.pongJoystick"),
+            object: nil,
+            userInfo: ["direction": direction],
+            deliverImmediately: true
+        )
     }
 
     /// Angle is normalised 0–1 around the circle, with UP at 0.75 on this
@@ -1896,6 +1917,158 @@ final class AppState {
         }
         (hardwareDevice as? VOAIDevice)?.setUnderglow(ambientParam(for: aggregate))
     }
+
+    // MARK: FX-MIC (Teenage Engineering EP-2350)
+
+    /// The mic gets its own slot and is deliberately never put in
+    /// `hardwareDevice`. That is the whole reason it can run at the same time
+    /// as the Creator Micro 2: the keyboard is IOKit HID, the mic is CoreAudio,
+    /// they never contend — and `attemptConnect()` tears down whatever is in the
+    /// keyboard slot on every attempt, which would kill the mic with it.
+    @ObservationIgnored private(set) var micDevice: FXMicDevice?
+    @ObservationIgnored private let outputGuard = AudioOutputGuard()
+
+    var micConnected = false
+    var micName: String?
+    var micError: String?
+    /// Smoothed 0…1 level, driving the grille meter on the on-screen mic.
+    var micLevel: Double = 0
+    var micClipping = false
+    /// Which preset bank the orange button is on, and the last cue slot to
+    /// fire. Written by the tone detector in M2; drawn today so the
+    /// reconstruction can be judged before the hardware arrives.
+    var micPresetBank = 0
+    var micLastSlot: Int?
+    var micVoiceActive = false
+    /// Every CoreAudio input, refreshed whenever devices come and go.
+    var micInputs: [AudioInputService.Input] = []
+
+    /// Bring up the mic subsystem: watch for audio devices, arm the output
+    /// guard, and reattach the saved input if it's already plugged in.
+    private func startMicPipeline() {
+        let device = FXMicDevice()
+        micDevice = device
+        device.onLevel = { [weak self] level, clipping in
+            Task { @MainActor in
+                self?.micLevel = Double(level)
+                self?.micClipping = clipping
+            }
+        }
+        device.onConnectionChange = { [weak self] connected in
+            Task { @MainActor in
+                self?.micConnected = connected
+                if !connected { self?.micLevel = 0; self?.micClipping = false }
+            }
+        }
+        // CoreAudio pushes device-list changes, so unlike the keyboard there is
+        // no backoff loop to write — a replug simply reattaches.
+        device.onDevicesChanged = { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.refreshMicInputs()
+                if self.config.micEnabled, !self.micConnected { self.autoConnectMic() }
+            }
+        }
+        device.startWatchingDevices()
+
+        refreshMicInputs()
+        applyOutputGuardSetting()
+        if config.micEnabled { autoConnectMic() }
+    }
+
+    func refreshMicInputs() {
+        micInputs = FXMicDevice.availableInputs()
+    }
+
+    /// Reattach the remembered input if it's present. Quiet when it isn't —
+    /// an unplugged dongle is not an error worth shouting about.
+    private func autoConnectMic() {
+        guard let input = AudioInputService.resolve(
+            uid: config.micInputUID, name: config.micInputName) else { return }
+        connectMic(to: input)
+    }
+
+    func connectMic(to input: AudioInputService.Input) {
+        guard let micDevice else { return }
+        micDevice.disconnect()
+        // Ask before opening, never open blind: an unpermissioned capture is
+        // how you end up debugging silence instead of a permission prompt.
+        PermissionsService.requestMicrophone { [weak self] granted in
+            Task { @MainActor in
+                guard let self else { return }
+                guard granted else {
+                    self.micError = "Microphone access denied — grant it in Privacy & Security, then reconnect."
+                    self.log("🎙 microphone permission denied")
+                    return
+                }
+                do {
+                    try micDevice.connect(to: input)
+                    self.micError = nil
+                    self.micName = input.name
+                    self.config.micInputUID = input.id
+                    self.config.micInputName = input.name
+                    self.log("🎙 listening on \(input.name) — \(input.detail)")
+                } catch {
+                    self.micError = error.localizedDescription
+                    self.log("⚠️ could not open \(input.name): \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    func disconnectMic() {
+        micDevice?.disconnect()
+        micName = nil
+        micError = nil
+        log("🎙 stopped listening")
+    }
+
+    func setMicEnabled(_ enabled: Bool) {
+        config.micEnabled = enabled
+        if enabled {
+            refreshMicInputs()
+            autoConnectMic()
+        } else {
+            disconnectMic()
+        }
+    }
+
+    // MARK: Keeping audio on the speakers
+
+    /// macOS moves the default output to whatever was just plugged in, so the
+    /// mic's USB dongle can silently take sound off the speakers. The guard puts
+    /// it back. It never touches the default *input* — `AudioInputService`
+    /// opens the mic by device id, so the mic never has to be the system
+    /// microphone and other apps keep whatever they had.
+    private func applyOutputGuardSetting() {
+        guard config.micKeepOutputOnSpeakers else {
+            outputGuard.disarm()
+            return
+        }
+        outputGuard.onCorrection = { [weak self] from, to in
+            self?.log("🔈 output jumped to \(from) — put it back on \(to)")
+        }
+        outputGuard.onGaveUp = { [weak self] reason in
+            self?.log("⚠️ \(reason)")
+            self?.config.micKeepOutputOnSpeakers = false
+        }
+        outputGuard.arm(preferring: config.micPreferredOutputUID)
+        // Remember whatever it latched onto, so the choice is visible and sticky.
+        config.micPreferredOutputUID = outputGuard.preferredUID
+    }
+
+    func setMicKeepOutputOnSpeakers(_ enabled: Bool) {
+        config.micKeepOutputOnSpeakers = enabled
+        applyOutputGuardSetting()
+    }
+
+    func setMicPreferredOutput(_ uid: String?) {
+        config.micPreferredOutputUID = uid
+        outputGuard.setPreferred(uid)
+    }
+
+    var micOutputs: [AudioOutputGuard.Output] { AudioOutputGuard.outputs() }
+    var micOutputGuardArmed: Bool { outputGuard.isArmed }
 
     // MARK: Physical keyboard
 

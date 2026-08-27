@@ -38,6 +38,7 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_NSHumanReadableCopyright: "© 2026 Jesse Waites"
         INFOPLIST_KEY_NSAppleEventsUsageDescription: "MegaMicro can activate and control apps like Conductor in response to your macro keyboard."
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "MegaMicro listens to your FX-MIC so you can talk to your agents and trigger actions from the mic's buttons."
         ENABLE_HARDENED_RUNTIME: YES
         ENABLE_APP_SANDBOX: NO
         MARKETING_VERSION: "0.1.0"

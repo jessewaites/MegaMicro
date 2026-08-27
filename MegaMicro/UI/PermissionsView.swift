@@ -23,6 +23,14 @@ struct PermissionsView: View {
                         PermissionsService.requestInputMonitoring()
                         PermissionsService.openInputMonitoringSettings()
                     })
+                permissionRow(
+                    title: "Microphone",
+                    granted: appState.microphoneGranted,
+                    why: "Lets MegaMicro listen to the FX-MIC. It opens that input directly, so the mic never becomes your system microphone and other apps keep whatever they were using.",
+                    request: {
+                        PermissionsService.requestMicrophone { _ in }
+                        PermissionsService.openMicrophoneSettings()
+                    })
             } header: {
                 Text("Permissions")
             } footer: {

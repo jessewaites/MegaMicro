@@ -4,7 +4,7 @@ enum ConfigSection: String, CaseIterable, Identifiable {
     case dashboard = "Dashboard"
     case agents = "Manage Agents"
     case fleet = "Manage Fleet"
-    case keyboard = "Keyboard"
+    case devices = "Manage Devices"
     case layers = "Manage Layers"
     case profiles = "Profiles"
     case states = "States & Colors"
@@ -21,7 +21,7 @@ enum ConfigSection: String, CaseIterable, Identifiable {
         case .agents: "cpu"
         case .fleet: "sailboat"   // fallback; sidebar prefers assets/fleet.svg
         case .dashboard: "gauge.with.dots.needle.50percent"
-        case .keyboard: "keyboard"
+        case .devices: "cable.connector"
         case .layers: "square.on.square"
         case .profiles: "slider.horizontal.3"
         case .states: "paintpalette"
@@ -43,7 +43,7 @@ struct ConfigurationWindow: View {
         @Bindable var state = appState
         return Binding(
             get: { state.activeSection },
-            set: { state.activeSection = $0 ?? .keyboard })
+            set: { state.activeSection = $0 ?? .devices })
     }
 
     var body: some View {
@@ -64,7 +64,7 @@ struct ConfigurationWindow: View {
             case .agents: AgentsPane()
             case .fleet: FleetPane()
             case .dashboard: DashboardPane()
-            case .keyboard: KeyboardPane()
+            case .devices: DevicesPane()
             case .layers: LayersPane()
             case .profiles: ProfileListView()
             case .states: StatesPane()
@@ -138,6 +138,42 @@ struct ConfigurationWindow: View {
             Link("Jesse Waites", destination: URL(string: "https://JesseWaites.com")!)
         }
         .font(.callout)
+    }
+}
+
+/// Which device the Manage Devices pane is showing. Both are live at once —
+/// the keyboard over HID, the mic over CoreAudio — so this only picks what you
+/// are looking at, never what is connected.
+enum DeviceTab: String, CaseIterable, Identifiable {
+    case keyboard = "Keyboard"
+    case microphone = "Microphone"
+    var id: String { rawValue }
+}
+
+/// Both devices under one roof. They don't contend for anything, so they share
+/// a pane rather than competing for sidebar rows.
+struct DevicesPane: View {
+    @Environment(AppState.self) private var appState
+
+    var body: some View {
+        @Bindable var state = appState
+        VStack(spacing: 0) {
+            Picker("Device", selection: $state.deviceTab) {
+                ForEach(DeviceTab.allCases) { tab in
+                    Text(tab.rawValue).tag(tab)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(maxWidth: 320)
+            .padding(.top, 14)
+            .padding(.bottom, 6)
+
+            switch appState.deviceTab {
+            case .keyboard: KeyboardPane()
+            case .microphone: MicrophonePane()
+            }
+        }
     }
 }
 

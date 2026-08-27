@@ -92,6 +92,23 @@ struct AppConfig: Codable, Hashable, Sendable {
     /// nothing worth saving.
     var savedDeviceLights: [String: String]?
 
+    // MARK: FX-MIC
+
+    /// Chosen audio input for the EP-2350, remembered by CoreAudio UID — that
+    /// survives unplug/replug, unlike the numeric device id. The name is kept
+    /// alongside as a fallback matcher for a device that came back with a new
+    /// UID, and so the picker can still show an absent device by name.
+    var micInputUID: String?
+    var micInputName: String?
+    /// Reattach the mic at launch, the way the keyboard auto-connects.
+    var micEnabled: Bool = true
+    /// Hold system audio output on `micPreferredOutputUID`. macOS moves the
+    /// default output to whatever was just plugged in, so without this the mic
+    /// (or its USB dongle) silently takes sound off the speakers.
+    var micKeepOutputOnSpeakers: Bool = true
+    /// Nil means "whatever was default when the guard first armed".
+    var micPreferredOutputUID: String?
+
     static let defaultClaudeHookEvents: [String: String] = [
         "SessionStart": "idle",       // announce on boot, before any activity
         "UserPromptSubmit": "thinking",
@@ -136,7 +153,9 @@ struct AppConfig: Codable, Hashable, Sendable {
              claudeHookEvents, codexHookEvents,
              activeLayoutID, customLayouts, layoutSettings, fleetExclusions, appearance,
              macNotificationsEnabled, promptSnippets, onboardingComplete, deviceName,
-             steadyGlow, savedDeviceLights
+             steadyGlow, savedDeviceLights,
+             micInputUID, micInputName, micEnabled,
+             micKeepOutputOnSpeakers, micPreferredOutputUID
     }
 
     init(from decoder: Decoder) throws {
@@ -165,6 +184,11 @@ struct AppConfig: Codable, Hashable, Sendable {
         deviceName = try c.decodeIfPresent(String.self, forKey: .deviceName) ?? defaults.deviceName
         steadyGlow = try c.decodeIfPresent(Bool.self, forKey: .steadyGlow) ?? defaults.steadyGlow
         savedDeviceLights = try c.decodeIfPresent([String: String].self, forKey: .savedDeviceLights)
+        micInputUID = try c.decodeIfPresent(String.self, forKey: .micInputUID)
+        micInputName = try c.decodeIfPresent(String.self, forKey: .micInputName)
+        micEnabled = try c.decodeIfPresent(Bool.self, forKey: .micEnabled) ?? defaults.micEnabled
+        micKeepOutputOnSpeakers = try c.decodeIfPresent(Bool.self, forKey: .micKeepOutputOnSpeakers) ?? defaults.micKeepOutputOnSpeakers
+        micPreferredOutputUID = try c.decodeIfPresent(String.self, forKey: .micPreferredOutputUID)
     }
 }
 

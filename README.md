@@ -31,6 +31,11 @@ Companion apps bring the live dashboard to iPhone, iPad, and Apple Watch.
 > is matched by the same code path, but has not been tested on hardware. The original **Creator
 > Micro v1** is supported through the separate `VIA` backend. More boards are addable through the
 > same layout model.
+>
+> A second, non-keyboard device is also supported: the **Teenage Engineering EP–2350 FX–MIC**
+> (sold as "ting"). It runs *alongside* the keyboard rather than instead of it — the keyboard
+> speaks IOKit HID, the mic speaks CoreAudio, and they never contend. See
+> [Microphone support](#microphone-support-teenage-engineering-ep2350-fxmic).
 
 ![MegaMicro mirrored across the Codex Micro, iPhone, and Apple Watch — an agent needs attention, so the board, phone, and watch all glow red.](Assets/screenshots/hero.png)
 
@@ -57,6 +62,12 @@ Companion apps bring the live dashboard to iPhone, iPad, and Apple Watch.
 - Supports simulated agents through Demo Mode for evaluation and video recording.
 - Safely prepares an editable Work Louder Input layer by cloning the live protected Codex
   layout, with strict object discovery, backups, atomic replacement, and read-back validation.
+- Binds cmux-hosted agents to a durable surface id, so a key still points at the right terminal
+  after cmux has been quit and reopened — and does so regardless of which terminal profile the
+  board is currently on.
+- Listens to a **Teenage Engineering EP–2350 FX–MIC** as a voice and button controller, drawn
+  on screen as a live reconstruction whose grille doubles as the input meter, and keeps system
+  audio output on your speakers when the mic's adapter is plugged in.
 - Keeps all telemetry local to the Mac.
 
 <!-- Screenshot placeholder: Assets/screenshots/activity-feed.png -->
@@ -102,6 +113,54 @@ that the provider has a native integration.
 
 Agent integrations and terminal integrations are independent: Claude, Codex, Cursor, OpenCode,
 Qwen, and the other supported providers can report from any supported terminal.
+
+## Microphone support: Teenage Engineering EP–2350 FX–MIC
+
+MegaMicro supports the **Teenage Engineering EP–2350** (marketed as FX–MIC, originally as "ting")
+as a second device, running at the same time as the keyboard. Inspired by
+[tajchert/tink-agent](https://github.com/tajchert/tink-agent), which pioneered this approach.
+
+### The constraint that shapes everything
+
+**The mic has no data channel to the Mac.** Its USB-C port is mass storage and power only — it
+mounts as a disk and exposes no HID, no USB audio, no MIDI, and no serial interface. Audio leaves
+over the attached 3.5 mm cable as a **stereo TRS line-out** at 2 VRMS / 8 dBu. The handle, the
+three buttons, and the shake sensor report nothing to the host.
+
+Two consequences follow:
+
+- **A Mac's own headphone jack will not work as the input.** It is a combo jack that only enables
+  its microphone side for a four-conductor TRRS headset plug; a three-conductor TRS plug is
+  classified as headphones, so macOS routes audio *out* to it and opens no input. The mic also
+  runs at line level, roughly 40 dB hotter than a Mac headset input expects. A **USB audio adapter
+  with a separate mic input** — the classic two-port "sound card" dongle — is what actually
+  enumerates to macOS as an input device.
+- **Button presses have to arrive as audio.** The intended approach is to load the mic's four
+  sample slots with pure cue tones and decode them out of the same stream the voice arrives on.
+
+### Running alongside the keyboard
+
+There is no contention to manage. The keyboard is IOKit HID and the mic is CoreAudio, so the mic
+gets its own slot in application state, entirely separate from the keyboard's. Both stay connected
+regardless of which tab **Manage Devices** happens to be showing.
+
+### Keeping sound on your speakers
+
+macOS reassigns the default audio *output* to whatever was just plugged in, so a USB audio adapter
+can silently take sound off your speakers. MegaMicro watches the default output and puts it back,
+debounced so it stands down rather than fighting another app for control.
+
+It never touches the default *input*: MegaMicro opens the mic by device id, so the mic never has
+to become your system microphone and other applications keep whatever they were already using.
+
+### The on-screen reconstruction
+
+The mic is drawn as pure vector shapes, the same way the keyboard is — no bitmap. Because the
+device cannot report anything, the drawing *is* the diagnostic: the perforated grille lights from
+the bottom with the input level (green through the working range, amber near the top, red on
+clip), the recessed LED strips show the cue bank and last-fired slot, and the handle leans in
+while there is voice. A preview mode drives all of it by hand, so the device can be set up and
+inspected before any hardware is attached.
 
 ## Companion apps
 
@@ -368,8 +427,8 @@ starting real coding agents. All simulated events are labeled **DEMO**.
 ### Profiles and mappings
 
 Profiles control actions, state colors, effects, and application-specific behavior. MegaMicro
-can switch profiles based on the foreground application. Use the Keyboard and States & Colors
-screens to customize the experience.
+can switch profiles based on the foreground application. Use the **Manage Devices → Keyboard**
+tab and the States & Colors screen to customize the experience.
 
 ### Hardware layers
 
@@ -670,6 +729,17 @@ hardware. Treat other combinations as experimental — in particular the **OpenA
 (`303A:8360`), which shares the firmware family and the same code path but has not been tested on
 a physical unit, and **Bluetooth**, which is untested throughout. Behaviour across other firmware
 revisions has not been surveyed.
+
+**cmux** support is implemented and in use: agent keys bind to `CMUX_SURFACE_ID` and focus through
+`cmux focus-panel`, surviving a quit-and-reopen. Exact focus requires cmux's **Settings →
+Automation → socket access** to be set to **Automation tools**; without it MegaMicro raises the
+cmux window and says so in the activity log.
+
+**EP–2350 FX–MIC** support is partially built. The on-screen reconstruction, CoreAudio input
+enumeration and capture, the microphone permission flow, and the output guard that keeps sound on
+your speakers are all implemented, but **not yet exercised against the physical mic** — that needs
+the USB audio adapter described above. Cue-tone decoding for the mic's buttons and push-to-talk
+dictation are designed but not yet implemented.
 
 Bug reports should include:
 

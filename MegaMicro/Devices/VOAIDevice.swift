@@ -51,11 +51,24 @@ final class VOAIDevice: KeyboardDevice {
     }
 
     func connect() throws {
-        try transport.open(
-            vendorID: VOAI.vendorID,
-            productIDs: VOAI.allPIDs,
-            usagePage: VOAI.usagePage,
-            usage: nil)
+        do {
+            try transport.open(
+                vendorID: VOAI.vendorID,
+                productIDs: VOAI.allPIDs,
+                usagePage: VOAI.usagePage,
+                usage: nil)
+        } catch HIDTransport.HIDError.deviceNotFound {
+            // Creator Micro 2 firmware 0.6.x exposes v.oai as report ID 6 on
+            // one composite HID device whose *primary* usage is Keyboard.
+            // IOHID's usage-page matcher therefore misses a device that has
+            // the correct verified VID/PID and report. Open that composite
+            // device and let the numbered report ID select v.oai traffic.
+            try transport.open(
+                vendorID: VOAI.vendorID,
+                productIDs: VOAI.allPIDs,
+                usagePage: nil,
+                usage: nil)
+        }
         isConnected = true
     }
 
