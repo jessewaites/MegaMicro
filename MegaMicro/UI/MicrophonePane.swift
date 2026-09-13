@@ -12,6 +12,7 @@ struct MicrophonePane: View {
     @State private var previewClipping = false
     @State private var previewBank = 0
     @State private var previewSlot: Int? = nil
+    @State private var showingSetup = false
 
     private var level: Double { previewing ? previewLevel : appState.micLevel }
     private var clipping: Bool { previewing ? previewClipping : appState.micClipping }
@@ -37,6 +38,7 @@ struct MicrophonePane: View {
         )) { target in
             MappingEditorView(target: target)
         }
+        .sheet(isPresented: $showingSetup) { MicSetupSheet() }
     }
 
     // MARK: Left — the device
@@ -76,6 +78,18 @@ struct MicrophonePane: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            // Input level as a plain bar: the real mic has no meter, so the
+            // drawing doesn't pretend to.
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.secondary.opacity(0.18))
+                    Capsule()
+                        .fill(clipping ? Color.red : Color.green.opacity(0.85))
+                        .frame(width: max(0, geo.size.width * level))
+                        .animation(.easeOut(duration: 0.06), value: level)
+                }
+            }
+            .frame(width: Self.deviceWidth, height: 4)
             Text("EP–2350 FX–MIC")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
@@ -188,7 +202,11 @@ struct MicrophonePane: View {
     private var cueSection: some View {
         GroupBox("Mic controls") {
             VStack(alignment: .leading, spacing: 12) {
-                sourceLine
+                HStack(alignment: .top) {
+                    sourceLine
+                    Spacer(minLength: 12)
+                    Button(controlSource == .none ? "Set up the mic…" : "Setup…") { showingSetup = true }
+                }
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("How the four controls work")

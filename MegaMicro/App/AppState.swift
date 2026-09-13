@@ -2108,6 +2108,8 @@ final class AppState {
 
     /// Outcome of the last disk tweak, shown under the buttons.
     var micDiskMessage: String?
+    /// When the script was last written to the mic's disk from this app.
+    var micScriptInstalledAt: Date?
 
     func micDiskVolume() -> URL? { FXMicDisk.mountedVolume() }
 
@@ -2121,6 +2123,7 @@ final class AppState {
         do {
             if enabled { try FXMicDisk.apply(tweak, on: volume) } else { try FXMicDisk.remove(tweak, on: volume) }
             let what = enabled ? "the MegaMicro control script" : "the stock firmware files (script removed)"
+            if enabled { micScriptInstalledAt = Date() }
             log("💾 mic disk: \(what)")
             try NSWorkspace.shared.unmountAndEjectDevice(at: volume)
             micDiskMessage = "Installed \(what) and ejected the disk. Now power-cycle the mic: press the small button above its USB port to turn it off, then squeeze the handle. Unplug the USB cable after that — the controls arrive over the audio cable."

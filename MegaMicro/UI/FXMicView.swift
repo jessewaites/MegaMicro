@@ -10,7 +10,8 @@ import SwiftUI
 /// leans in while there's voice. That makes the drawing the diagnostic — you can
 /// see the mic working without reading a log.
 struct FXMicView: View {
-    /// Smoothed input level, 0…1.
+    /// Smoothed input level, 0…1. Kept for the clip flag; the grille itself
+    /// stays dark like the real one.
     var level: Double = 0
     /// Peak hit full scale — the signal is too hot for the input.
     var clipping: Bool = false
@@ -135,7 +136,9 @@ struct FXMicView: View {
                 // rather than a polka dot.
                 let radius = min(stepX, stepY) * 0.43
 
-                let litRows = level * Double(Self.holeRows)
+                // The real grille never lights; `level` is shown by the caller
+                // as a bar under the drawing, not painted onto the mic.
+                let litRows = 0.0
 
                 for row in 0..<Self.holeRows {
                     let fromBottom = Self.holeRows - 1 - row
