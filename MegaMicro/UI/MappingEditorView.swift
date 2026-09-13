@@ -34,9 +34,20 @@ struct MappingEditorView: View {
     @State private var recording = false
     @State private var recordMonitor: Any?
 
+    /// Mic cues get their slot name; everything else keeps the raw control id.
+    private var title: String {
+        if target.control == FXMicLayout.handle { return "FX-MIC · \(FXMicControlName.handle) handle (held while squeezed)" }
+        if let cell = FXMicProtocol.describe(target.control) { return "FX-MIC · \(cell)" }
+        if target.control.rawValue.hasPrefix("mic.cue."),
+           let cue = Int(target.control.rawValue.dropFirst("mic.cue.".count)) {
+            return "FX-MIC · \(CueTones.label(cue)) · grey button"
+        }
+        return "\(target.control.rawValue) · \(target.gesture.rawValue)"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("\(target.control.rawValue) · \(target.gesture.rawValue)")
+            Text(title)
                 .font(.title3.bold())
 
             Picker("Action", selection: $actionType) {

@@ -35,6 +35,28 @@ struct FXMicView: View {
     /// it. Callers set one dimension and derive the other from this.
     static let aspect: CGFloat = 645.0 / 955.0
 
+    /// Where each physical control sits, as a fraction of the art box height,
+    /// so a caller can hang labels beside the drawing without knowing the
+    /// geometry. Numbered the way the eye reads the device: the handle on the
+    /// left first, then down the right-hand side.
+    struct Callout: Identifiable {
+        enum Side { case left, right }
+        var id: String { label }
+        var label: String
+        var side: Side
+        var yFraction: CGFloat
+    }
+    static let callouts: [Callout] = [
+        Callout(label: FXMicControlName.handle, side: .left,
+                yFraction: (P.handleTop + P.handleBottom) / 2),
+        Callout(label: FXMicControlName.fxButton, side: .right,
+                yFraction: (P.presetTop + P.presetBottom) / 2),
+        Callout(label: FXMicControlName.middleButton, side: .right,
+                yFraction: (P.slotTop + P.slotBottom) / 2),
+        Callout(label: FXMicControlName.bottomButton, side: .right,
+                yFraction: (P.triggerTop + P.triggerBottom) / 2),
+    ]
+
     private enum P {
 
         static let bodyX: CGFloat = 0.175, bodyW: CGFloat = 0.752
@@ -200,9 +222,9 @@ struct FXMicView: View {
         return VStack(spacing: 0) {
             ForEach(0..<Self.stripDots, id: \.self) { index in
                 Circle()
-                    .fill(index == lit ? Color(red: 0.55, green: 0.95, blue: 0.6) : Color(white: 0.34))
+                    .fill(index == lit ? Color(red: 1.0, green: 0.25, blue: 0.2) : Color(white: 0.34))
                     .frame(width: dot, height: dot)
-                    .shadow(color: index == lit ? Color.green.opacity(0.9) : .clear, radius: dot)
+                    .shadow(color: index == lit ? Color.red.opacity(0.9) : .clear, radius: dot)
                     .frame(maxHeight: .infinity)
             }
         }

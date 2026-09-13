@@ -41,6 +41,7 @@ targets:
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "MegaMicro listens to your FX-MIC so you can talk to your agents and trigger actions from the mic's buttons."
         ENABLE_HARDENED_RUNTIME: YES
         ENABLE_APP_SANDBOX: NO
+        CODE_SIGN_ENTITLEMENTS: MegaMicro/MegaMicro.entitlements
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

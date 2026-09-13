@@ -55,6 +55,16 @@ enum PermissionsService {
         }
     }
 
+    static func describe(_ status: AVAuthorizationStatus) -> String {
+        switch status {
+        case .authorized: return "authorized"
+        case .notDetermined: return "not determined"
+        case .denied: return "denied"
+        case .restricted: return "restricted"
+        @unknown default: return "unknown"
+        }
+    }
+
     static func openMicrophoneSettings() {
         open("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
     }

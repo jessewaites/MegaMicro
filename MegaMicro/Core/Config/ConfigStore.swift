@@ -108,6 +108,12 @@ struct AppConfig: Codable, Hashable, Sendable {
     var micKeepOutputOnSpeakers: Bool = true
     /// Nil means "whatever was default when the guard first armed".
     var micPreferredOutputUID: String?
+    /// Set once the starter mic mappings (handle holds ⌘Z, sample 1 → ↵,
+    /// sample 2 → ⌘U) have been written into the profiles, so a user who
+    /// clears them isn't handed them back.
+    var micUSBControlsSeeded: Bool = false
+    /// dBFS above which the line is considered live — the handle pressed.
+    var micHandleThresholdDB: Double = -50
 
     static let defaultClaudeHookEvents: [String: String] = [
         "SessionStart": "idle",       // announce on boot, before any activity
@@ -155,7 +161,7 @@ struct AppConfig: Codable, Hashable, Sendable {
              macNotificationsEnabled, promptSnippets, onboardingComplete, deviceName,
              steadyGlow, savedDeviceLights,
              micInputUID, micInputName, micEnabled,
-             micKeepOutputOnSpeakers, micPreferredOutputUID
+             micKeepOutputOnSpeakers, micPreferredOutputUID, micUSBControlsSeeded, micHandleThresholdDB
     }
 
     init(from decoder: Decoder) throws {
@@ -189,6 +195,8 @@ struct AppConfig: Codable, Hashable, Sendable {
         micEnabled = try c.decodeIfPresent(Bool.self, forKey: .micEnabled) ?? defaults.micEnabled
         micKeepOutputOnSpeakers = try c.decodeIfPresent(Bool.self, forKey: .micKeepOutputOnSpeakers) ?? defaults.micKeepOutputOnSpeakers
         micPreferredOutputUID = try c.decodeIfPresent(String.self, forKey: .micPreferredOutputUID)
+        micUSBControlsSeeded = try c.decodeIfPresent(Bool.self, forKey: .micUSBControlsSeeded) ?? defaults.micUSBControlsSeeded
+        micHandleThresholdDB = try c.decodeIfPresent(Double.self, forKey: .micHandleThresholdDB) ?? defaults.micHandleThresholdDB
     }
 }
 

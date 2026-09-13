@@ -44,9 +44,39 @@ final class AudioInputService {
             guard channels > 0 else { return nil }
             guard let uid = stringProperty(id, kAudioDevicePropertyDeviceUID, scope: kAudioObjectPropertyScopeGlobal) else { return nil }
             let name = stringProperty(id, kAudioObjectPropertyName, scope: kAudioObjectPropertyScopeGlobal) ?? "Unknown input"
+            guard !isPrivateAggregate(id, name: name) else { return nil }
             return Input(id: uid, name: name, deviceID: id,
                          channels: channels, sampleRate: nominalSampleRate(id))
         }
+    }
+
+    /// The moment an `AVAudioEngine` binds to a device, CoreAudio publishes a
+    /// process-private aggregate named `CADefaultDeviceAggregate-<pid>-<n>`
+    /// that wraps it. It's this app looking at itself — listing it would offer
+    /// the user a "device" that vanishes when they stop listening.
+    private static func isPrivateAggregate(_ device: AudioDeviceID, name: String) -> Bool {
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyTransportType,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        var transport: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        guard AudioObjectGetPropertyData(device, &addr, 0, nil, &size, &transport) == noErr,
+              transport == kAudioDeviceTransportTypeAggregate else { return false }
+        if name.hasPrefix("CADefaultDeviceAggregate") { return true }
+        // A user-built aggregate (Audio MIDI Setup) is public and stays; only
+        // the ones flagged private by their owner are hidden.
+        var compositionAddr = AudioObjectPropertyAddress(
+            mSelector: kAudioAggregateDevicePropertyComposition,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        var composition: CFDictionary? = nil
+        var compositionSize = UInt32(MemoryLayout<CFDictionary?>.size)
+        let status = withUnsafeMutablePointer(to: &composition) {
+            AudioObjectGetPropertyData(device, &compositionAddr, 0, nil, &compositionSize, $0)
+        }
+        guard status == noErr, let dict = composition as? [String: Any] else { return false }
+        return (dict[kAudioAggregateDeviceIsPrivateKey] as? NSNumber)?.boolValue ?? false
     }
 
     /// Resolve a persisted choice. Prefers the UID (survives replug); falls back
