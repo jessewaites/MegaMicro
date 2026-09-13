@@ -1,7 +1,8 @@
 import Foundation
 
-/// The cue tones MegaMicro loads into the EP-2350's four sample slots, and the
-/// frequencies it listens for to decode them back out of the mic's line output.
+/// The chirp symbols MegaMicro loads into the EP-2350's four sample slots, and
+/// the frequencies it listens for to decode them back out of the line output.
+/// `FXMicScript` plays them; `CueMessageDecoder` reads the codes.
 ///
 /// The mic has no data channel, so a button press is only observable as the
 /// sound it makes. Each slot gets a short two-tone chirp — DTMF-style — because
@@ -43,8 +44,9 @@ enum CueTones {
     static func fileName(for cue: Int) -> String { "\(cue + 1).wav" }
 
     /// Long enough for the detector to confirm across two 50 ms blocks with
-    /// margin for the onset ramp, short enough not to be annoying in the room.
-    static let duration: Double = 0.35
+    /// margin for the onset ramp; short enough that the mic's script can send
+    /// one every 240 ms with a silent block between.
+    static let duration: Double = 0.16
     static let fadeDuration: Double = 0.01
     /// Per-component amplitude. Two at 0.45 peak at 0.9 full scale — hot, so
     /// the tone stands well clear of whatever voice is mixed with it.

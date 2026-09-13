@@ -28,6 +28,16 @@ final class FXMicSerialLink {
     private var buffer = Data()
     private var ready = false
     private let queue = DispatchQueue(label: "megamicro.fxmic.serial")
+    /// Consecutive install failures; each one doubles the wait before the
+    /// next try, capped at a minute, so a mic that won't talk USB doesn't
+    /// fill the log four times a minute.
+    private var failures = 0
+    private var nextAttempt = Date.distantPast
+    /// Set by the owner while another path (the audio script) is authoritative;
+    /// no attempts are made until it clears.
+    var suspended = false {
+        didSet { if !suspended && oldValue { failures = 0; nextAttempt = .distantPast } }
+    }
 
     // MARK: Lifecycle
 
@@ -36,7 +46,7 @@ final class FXMicSerialLink {
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now() + 2, repeating: 2)
         timer.setEventHandler { [weak self] in
-            guard let self, !self.isConnected else { return }
+            guard let self, !self.isConnected, !self.suspended, Date() >= self.nextAttempt else { return }
             self.attempt()
         }
         timer.resume()
@@ -136,8 +146,13 @@ final class FXMicSerialLink {
         // first MM line follows on the next tick.
         queue.asyncAfter(deadline: .now() + 3) { [weak self] in
             guard let self, self.isConnected, !self.ready else { return }
-            self.onLog?("🔌 mic serial: no answer from the hook — retrying")
-            self.closePort(reason: "no answer")
+            self.failures += 1
+            let delay = min(60, 4 * pow(2, Double(self.failures - 1)))
+            self.nextAttempt = Date().addingTimeInterval(delay)
+            if self.failures <= 2 {
+                self.onLog?("🔌 mic serial: no answer from the hook — retrying in \(Int(delay)) s")
+            }
+            self.closePort(reason: nil)
         }
     }
 
@@ -179,6 +194,7 @@ final class FXMicSerialLink {
     private func handle(line: String) {
         if line.hasSuffix("MM-READY") {
             ready = true
+            failures = 0
             firmware = nil
             DispatchQueue.main.async { self.onConnectionChange?(true, self.portPath) }
             return

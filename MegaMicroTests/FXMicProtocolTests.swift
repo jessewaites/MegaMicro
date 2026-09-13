@@ -46,6 +46,6 @@ final class FXMicProtocolTests: XCTestCase {
         XCTAssertFalse(FXMicProtocol.agentSource.contains("\t"))
         XCTAssertTrue(FXMicProtocol.agentSource.contains("ui.callback(_mm_hook)"))
         XCTAssertTrue(FXMicProtocol.agentSource.contains("print(\"MM-READY\")"))
-        XCTAssertTrue(FXMicProtocol.agentSource.contains("_mm_orig = teenage.python_callback"))
+        XCTAssertTrue(FXMicProtocol.agentSource.contains("_mm_orig = getattr(teenage, 'mm_hook', teenage.python_callback)"))
     }
 }

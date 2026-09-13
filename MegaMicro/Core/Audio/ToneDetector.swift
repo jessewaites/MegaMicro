@@ -7,8 +7,8 @@ import Foundation
 /// against the block's total energy so the result is a *purity* — the share of
 /// everything heard that is this one tone. A cue fires when its two components
 /// each hold a clear share, together dominate the block, and do so on two
-/// consecutive blocks. Then it holds off refiring that cue for a second, which
-/// is what keeps an echo effect on the mic from double-triggering.
+/// consecutive blocks, once per burst: the same cue fires again only after a
+/// block in which it wasn't heard, which one quiet block between chirps gives.
 ///
 /// Pure Swift, no Accelerate: four frequencies × nine offsets × 800 samples is
 /// under 30k multiply-adds per block, nothing at 20 blocks a second.
@@ -36,8 +36,6 @@ final class ToneDetector {
     static let minPairPurity: Float = 0.45
     /// Blocks in a row a cue must be heard before firing.
     static let confirmBlocks = 2
-    /// Blocks to ignore the same cue after firing (24 × 50 ms = 1.2 s).
-    static let refractoryBlocks = 24
     /// Below this RMS the block is floor noise — don't even look.
     static let minRMS: Float = 0.002
 
@@ -45,7 +43,10 @@ final class ToneDetector {
 
     private var pendingCue: Int?
     private var pendingCount = 0
-    private var refractory: [Int: Int] = [:]
+    /// The cue that already fired for the burst still in progress. Cleared by
+    /// the first block that isn't that cue, so a fresh burst of the same cue
+    /// after one quiet block fires again.
+    private var firedCue: Int?
     private let coefficients: [[Float]]   // [frequency][offset]
 
     init(sampleRate: Double = 16_000) {
@@ -59,21 +60,17 @@ final class ToneDetector {
     func reset() {
         pendingCue = nil
         pendingCount = 0
-        refractory.removeAll()
+        firedCue = nil
         lastReading = nil
     }
 
     /// Feed one block. Returns a detection on the block that confirms a cue.
     func process(_ block: [Float], rms: Float) -> Detection? {
-        for cue in Array(refractory.keys) {
-            refractory[cue]! -= 1
-            if refractory[cue]! <= 0 { refractory[cue] = nil }
-        }
-
         guard rms >= Self.minRMS, !block.isEmpty else {
             lastReading = nil
             pendingCue = nil
             pendingCount = 0
+            firedCue = nil
             return nil
         }
 
@@ -96,6 +93,7 @@ final class ToneDetector {
               purities[CueTones.pairs[best.cue].1] >= Self.minComponentPurity else {
             pendingCue = nil
             pendingCount = 0
+            firedCue = nil
             return nil
         }
 
@@ -104,10 +102,10 @@ final class ToneDetector {
         } else {
             pendingCue = best.cue
             pendingCount = 1
+            firedCue = nil
         }
-        guard pendingCount == Self.confirmBlocks else { return nil }
-        guard refractory[best.cue] == nil else { return nil }
-        refractory[best.cue] = Self.refractoryBlocks
+        guard pendingCount == Self.confirmBlocks, firedCue != best.cue else { return nil }
+        firedCue = best.cue
         return Detection(cue: best.cue, purity: min(1, best.purity))
     }
 

@@ -66,20 +66,18 @@ final class ToneDetectorTests: XCTestCase {
         XCTAssertEqual(hits.map(\.cue), [3])
     }
 
-    func testRefractoryBlocksEchoRepeats() {
+    func testOneBurstFiresOnceAndAQuietBlockReArmsIt() {
         let detector = ToneDetector(sampleRate: rate)
         let silence = [Float](repeating: 0, count: n)
-        // Tone, short gap, the same tone again (an echo tail) inside 1.2 s.
-        var blocks = cueBlocks(0, count: 6) + Array(repeating: silence, count: 4) + cueBlocks(0, count: 6)
-        var hits = feed(detector, blocks)
+        // A long burst is one press, however many blocks it spans.
+        var hits = feed(detector, cueBlocks(0, count: 12))
         XCTAssertEqual(hits.map(\.cue), [0])
-        // After the refractory window the same cue fires again.
-        blocks = Array(repeating: silence, count: ToneDetector.refractoryBlocks) + cueBlocks(0, count: 6)
-        hits = feed(detector, blocks)
+        // One silent block, then the same symbol again: a second chirp.
+        hits = feed(detector, [silence] + cueBlocks(0, count: 4))
         XCTAssertEqual(hits.map(\.cue), [0])
     }
 
-    func testDifferentCueFiresDuringAnothersRefractory() {
+    func testBackToBackDifferentCuesBothFire() {
         let detector = ToneDetector(sampleRate: rate)
         let hits = feed(detector, cueBlocks(0, count: 6) + cueBlocks(3, count: 6))
         XCTAssertEqual(hits.map(\.cue), [0, 3])

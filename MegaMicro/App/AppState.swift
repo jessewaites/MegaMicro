@@ -1948,9 +1948,8 @@ final class AppState {
     /// Smoothed 0…1 level, driving the grille meter on the on-screen mic.
     var micLevel: Double = 0
     var micClipping = false
-    /// Which effect preset the orange button is on (never observable, so it
-    /// stays on 0 unless the preview drives it), and the last sample slot the
-    /// tone detector heard fire.
+    /// How many red page LEDs the mic has lit (0 clean … 4), from the USB
+    /// link; and the selected sample slot.
     var micPresetBank = 0
     var micLastSlot: Int?
     var micVoiceActive = false
@@ -1959,11 +1958,12 @@ final class AppState {
     var micToneReading: ToneDetector.Reading?
     /// Latest block level in dBFS, for setting the handle threshold by eye.
     var micLevelDB: Double = -120
-    /// Human line about the last confirmed cue, e.g. "Sample 1 · 0.82 purity · 9:41:07".
+    /// Human line about the last chirp symbol decoded, for the diagnostics line.
     var micLastCueSummary: String?
-    /// Outcome of the last "Export cue tones" run, shown under the button.
-    var micCueExportMessage: String?
-    @ObservationIgnored private var micSlotClearGeneration = 0
+    /// When the mic's script last got a message through over audio. Nil until
+    /// the first one; that's how the UI knows the script is installed and talking.
+    var micScriptLastHeard: Date?
+    @ObservationIgnored private var cueDecoder = CueMessageDecoder()
     /// Every CoreAudio input, refreshed whenever devices come and go.
     var micInputs: [AudioInputService.Input] = []
 
@@ -2039,8 +2039,8 @@ final class AppState {
             self.micUSBPort = port
             if connected {
                 self.log("🔌 mic connected over USB (\(port ?? "serial")) — buttons, handle and page now come straight from the firmware")
-            } else {
-                self.log("🔌 mic USB link down — falling back to hearing the sample buttons")
+            } else if self.micScriptLastHeard == nil {
+                self.log("🔌 mic USB link down — controls now decode from the audio cable when the mic's script is installed")
                 // Never leave a hold-keystroke stuck down if the cable comes out.
                 if self.micHandleHeldByLink { self.linkHandle(down: false) }
                 self.micLinkState = FXMicProtocol.State()
@@ -2057,13 +2057,22 @@ final class AppState {
     /// Diff the new frame against the last and turn transitions into control
     /// presses. The page is read at press time, so a button held across an
     /// orange press releases on the page it started on.
+    /// Once the mic's script is chirping into a live line-in, audio is the
+    /// source of truth and USB frames are ignored — otherwise every press
+    /// would land twice while the cable is in for power.
+    private var audioAuthoritative: Bool {
+        guard micConnected, let heard = micScriptLastHeard else { return false }
+        return Date().timeIntervalSince(heard) < 30
+    }
+
     private func linkStateChanged(_ new: FXMicProtocol.State) {
+        guard !audioAuthoritative else { return }
         let old = micLinkState
         micLinkState = new
         micLinkPage = new.page
         micLinkButtons = (new.play, new.select, new.fx)
         micLinkHandle = new.handle
-        micPresetBank = new.fxPos < 0 ? 0 : 1
+        micPresetBank = new.page
         micLastSlot = new.samPos
 
         if new.handleDown != old.handleDown { linkHandle(down: new.handleDown) }
@@ -2111,14 +2120,10 @@ final class AppState {
         }
         do {
             if enabled { try FXMicDisk.apply(tweak, on: volume) } else { try FXMicDisk.remove(tweak, on: volume) }
-            let what: String
-            switch tweak {
-            case .cleanPages: what = enabled ? "clean voice on every page" : "factory effects"
-            case .silentSamples: what = enabled ? "silent samples" : "factory samples"
-            }
-            log("💾 mic disk: wrote \(what)")
+            let what = enabled ? "the MegaMicro control script" : "the stock firmware files (script removed)"
+            log("💾 mic disk: \(what)")
             try NSWorkspace.shared.unmountAndEjectDevice(at: volume)
-            micDiskMessage = "Wrote \(what) and ejected the disk. The mic restarts and picks it up in a few seconds; if the page dot doesn't come back, press the small button above the USB port, then squeeze the handle."
+            micDiskMessage = "Installed \(what) and ejected the disk. Now power-cycle the mic: press the small button above its USB port to turn it off, then squeeze the handle. Unplug the USB cable after that — the controls arrive over the audio cable."
         } catch {
             micDiskMessage = "Couldn't update the mic's disk: \(error.localizedDescription)"
             log("⚠️ mic disk: \(error.localizedDescription)")
@@ -2151,9 +2156,6 @@ final class AppState {
                                      target: .frontmost)
         let clearLine = Action.keystroke(chord: KeyChord(keyCode: KeyCodes.u, modifiers: .command),
                                          target: .frontmost)
-        // The first cut seeded sample 1 as a tapped ⌘Z; that moves to the handle.
-        let oldSeed = Action.keystroke(chord: KeyChord(keyCode: KeyCodes.z, modifiers: .command),
-                                       target: .frontmost)
         for index in config.profiles.indices {
             var m = config.profiles[index].mappings
             if m[FXMicLayout.handle]?[.press] == nil { m[FXMicLayout.handle, default: [:]][.press] = holdUndo }
@@ -2164,10 +2166,6 @@ final class AppState {
                 if m[sel]?[.press] == nil { m[sel, default: [:]][.press] = enter }
                 if m[play]?[.press] == nil { m[play, default: [:]][.press] = clearLine }
             }
-            if m[FXMicLayout.cue(0)]?[.press] == nil || m[FXMicLayout.cue(0)]?[.press] == oldSeed {
-                m[FXMicLayout.cue(0), default: [:]][.press] = enter
-            }
-            if m[FXMicLayout.cue(1)]?[.press] == nil { m[FXMicLayout.cue(1), default: [:]][.press] = clearLine }
             config.profiles[index].mappings = m
         }
         config.micUSBControlsSeeded = true
@@ -2178,8 +2176,9 @@ final class AppState {
     /// hardware press path with a real down/up pair, so a hold-keystroke stays
     /// held exactly as long as the mic is live.
     private func handleChanged(_ down: Bool) {
-        // Over USB the handle is a real reading; the audio guess stays quiet.
-        guard !micUSBConnected else { return }
+        // Over USB, or once the mic's script is chirping, the handle is a real
+        // reading; the level guess stays quiet.
+        guard !micUSBConnected, micScriptLastHeard == nil else { return }
         micVoiceActive = down
         let action = action(for: FXMicLayout.handle, gesture: .press)
         if down {
@@ -2194,93 +2193,58 @@ final class AppState {
         micDevice?.handleThresholdDB = Float(db)
     }
 
+    @ObservationIgnored private var linkResumeGeneration = 0
+    /// Let the USB link try again once the audio path has been quiet for a
+    /// while — the cable may be in for setup with the line-out unplugged.
+    private func scheduleLinkResume() {
+        linkResumeGeneration += 1
+        let generation = linkResumeGeneration
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(120))
+            guard let self, self.linkResumeGeneration == generation, !self.audioAuthoritative else { return }
+            self.micLink.suspended = false
+        }
+    }
+
     /// Open the mapping sheet for the handle.
     func editHandle() {
         editTarget = EditTarget(control: FXMicLayout.handle, gesture: .press)
     }
 
-    /// The detector confirmed a cue. Light the slot on the drawing, then run
-    /// it through the same path a physical key takes — `fromHardware` so Edit
-    /// mode on the Keyboard pane never swallows a real press.
+    /// The detector confirmed a chirp symbol. Over audio the mic's script
+    /// speaks in short symbol codes (see `FXMicScript`); decode them and feed
+    /// the same handlers the USB link uses, so both paths behave identically.
     private func cueHeard(_ detection: ToneDetector.Detection) {
-        // Over USB the bottom button already fired directly; the tone it
-        // played must not fire a second action.
-        guard !micUSBConnected else { return }
-        let time = Date().formatted(date: .omitted, time: .standard)
-        micLastCueSummary = "\(CueTones.label(detection.cue)) · purity \(String(format: "%.2f", detection.purity)) · \(time)"
-        log("🎙 heard \(CueTones.label(detection.cue)) (purity \(String(format: "%.2f", detection.purity)))")
-        fireCue(detection.cue)
-    }
-
-    /// Run whatever the cue is mapped to, exactly as if the mic had played it.
-    /// Also behind the Test button, so a mapping can be checked before the
-    /// tones are on the mic.
-    func fireCue(_ cue: Int) {
-        micLastSlot = cue
-        micSlotClearGeneration += 1
-        let generation = micSlotClearGeneration
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(1.2))
-            guard let self, self.micSlotClearGeneration == generation else { return }
-            self.micLastSlot = nil
+        let now = Date()
+        micLastCueSummary = "symbol \(detection.cue) · purity \(String(format: "%.2f", detection.purity)) · \(now.formatted(date: .omitted, time: .standard))"
+        guard let message = cueDecoder.feed(symbol: detection.cue, at: now.timeIntervalSinceReferenceDate) else { return }
+        let takingOver = micUSBConnected && !audioAuthoritative
+        if micScriptLastHeard == nil {
+            log("🎙 mic script is talking over audio — buttons, handle and page now decode from the line-in")
         }
-        let control = FXMicLayout.cue(cue)
-        controlActivated(control, gesture: .press, phase: .down, fromHardware: true)
-        controlActivated(control, gesture: .press, phase: .up, fromHardware: true)
-    }
-
-    /// Open the mapping sheet for one cue, from the Microphone pane.
-    func editCue(_ cue: Int) {
-        editTarget = EditTarget(control: FXMicLayout.cue(cue), gesture: .press)
-    }
-
-    /// Volumes that look like the mic's disk — "fx-mic disk" on current
-    /// firmware, "tingdisk" on the launch name — so the export lands straight
-    /// on the device when it's mounted.
-    static func mountedMicDisks() -> [URL] {
-        let keys: [URLResourceKey] = [.volumeNameKey, .volumeIsRemovableKey]
-        let volumes = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: keys,
-                                                            options: [.skipHiddenVolumes]) ?? []
-        return volumes.filter { url in
-            let name = ((try? url.resourceValues(forKeys: [.volumeNameKey]))?.volumeName ?? "").lowercased()
-            return name.contains("fx-mic") || name.contains("fx mic") || name.contains("tingdisk")
+        micScriptLastHeard = now
+        micLink.suspended = true
+        scheduleLinkResume()
+        // The frame that hands authority from USB to audio already ran over
+        // USB an instant ago; don't run it twice.
+        if takingOver, case .page = message {} else if takingOver { return }
+        switch message {
+        case .fx3(let down):
+            micLinkButtons.select = down
+            linkButton(.select, down: down, page: micLinkPage)
+        case .fx4(let down):
+            micLinkButtons.play = down
+            linkButton(.play, down: down, page: micLinkPage)
+        case .handle(let down):
+            micLinkHandle = down ? 1 : 0
+            linkHandle(down: down)
+        case .page(let level):
+            micLinkPage = level
+            micPresetBank = level
+            log("🎛 mic page → \(FXMicProtocol.pageLabel(level))")
         }
     }
 
-    /// Write `1.wav` … `4.wav` to the mic's disk if it's mounted, otherwise to
-    /// a folder the user picks. The mic reloads its slots after it's ejected.
-    func exportCueTones() {
-        if let disk = Self.mountedMicDisks().first {
-            writeCueTones(to: disk, onDevice: true)
-            return
-        }
-        let panel = NSOpenPanel()
-        panel.title = "Choose where to save the cue tones"
-        panel.message = "The mic's disk isn't mounted. Pick a folder — then copy 1.wav–4.wav onto the mic's disk."
-        panel.prompt = "Save Tones"
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.canCreateDirectories = true
-        panel.allowsMultipleSelection = false
-        guard panel.runModal() == .OK, let folder = panel.url else { return }
-        writeCueTones(to: folder, onDevice: false)
-    }
-
-    private func writeCueTones(to folder: URL, onDevice: Bool) {
-        do {
-            for cue in 0..<CueTones.cueCount {
-                try CueTones.wavData(for: cue)
-                    .write(to: folder.appendingPathComponent(CueTones.fileName(for: cue)), options: .atomic)
-            }
-            micCueExportMessage = onDevice
-                ? "Wrote 1.wav–4.wav to \(folder.lastPathComponent). Eject it and the mic will restart with the new sounds."
-                : "Wrote 1.wav–4.wav to \(folder.path). Copy them to the root of the mic's disk, then eject it."
-            log("🎙 exported cue tones to \(folder.path)")
-        } catch {
-            micCueExportMessage = "Couldn't write the tones: \(error.localizedDescription)"
-            log("⚠️ cue tone export failed: \(error.localizedDescription)")
-        }
-    }
 
     func refreshMicInputs() {
         micInputs = FXMicDevice.availableInputs()

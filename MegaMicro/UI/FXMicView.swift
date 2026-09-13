@@ -14,12 +14,22 @@ struct FXMicView: View {
     var level: Double = 0
     /// Peak hit full scale — the signal is too hot for the input.
     var clipping: Bool = false
-    /// Which preset bank the orange button is on (0 = A, 1 = B).
-    var presetBank: Int = 0
-    /// Slot 0–3 of the most recent cue, for the slot LEDs and the button press.
+    /// How many of the four red page LEDs are lit: 0 on the clean page, then
+    /// one more per FX2 press, exactly as the mic shows it.
+    var pageLevel: Int = 0
+    /// Which of the four white sample LEDs is lit (0–3), or none.
     var lastSlot: Int?
     /// True while voice is being captured — the handle leans in.
     var voiceActive: Bool = false
+    /// Which side buttons are physically down right now (FX2, FX3, FX4).
+    var fxPressed = false
+    var selectPressed = false
+    var playPressed = false
+    /// Draw FX1–FX4 beside the device, in the drawing's own coordinates so
+    /// they can never sit next to the wrong control. The caller reserves
+    /// `calloutWidth` of horizontal room on each side.
+    var showCallouts = false
+    static let calloutWidth: CGFloat = 60
 
     // Proportions measured off the product render, as fractions of the whole
     // art box — which includes the handle, the protruding buttons and the
@@ -34,28 +44,6 @@ struct FXMicView: View {
     /// its own layout height, putting the cable on top of the caption beneath
     /// it. Callers set one dimension and derive the other from this.
     static let aspect: CGFloat = 645.0 / 955.0
-
-    /// Where each physical control sits, as a fraction of the art box height,
-    /// so a caller can hang labels beside the drawing without knowing the
-    /// geometry. Numbered the way the eye reads the device: the handle on the
-    /// left first, then down the right-hand side.
-    struct Callout: Identifiable {
-        enum Side { case left, right }
-        var id: String { label }
-        var label: String
-        var side: Side
-        var yFraction: CGFloat
-    }
-    static let callouts: [Callout] = [
-        Callout(label: FXMicControlName.handle, side: .left,
-                yFraction: (P.handleTop + P.handleBottom) / 2),
-        Callout(label: FXMicControlName.fxButton, side: .right,
-                yFraction: (P.presetTop + P.presetBottom) / 2),
-        Callout(label: FXMicControlName.middleButton, side: .right,
-                yFraction: (P.slotTop + P.slotBottom) / 2),
-        Callout(label: FXMicControlName.bottomButton, side: .right,
-                yFraction: (P.triggerTop + P.triggerBottom) / 2),
-    ]
 
     private enum P {
 
@@ -89,8 +77,8 @@ struct FXMicView: View {
     /// Holes across and down the grille, counted off the render.
     private static let holeColumns = 15
     private static let holeRows = 14
-    /// Dots per LED strip.
-    private static let stripDots = 5
+    /// LEDs per strip: four red for the page, four white for the sample.
+    private static let stripDots = 4
 
     var body: some View {
         GeometryReader { geo in
@@ -101,6 +89,7 @@ struct FXMicView: View {
                 cable(w: w, h: h)
                 sideButtons(w: w, h: h)
                 bodyShell(w: w, h: h)
+                if showCallouts { calloutLabels(w: w, h: h) }
             }
             .frame(width: w, height: h)
         }
@@ -197,9 +186,9 @@ struct FXMicView: View {
         return Color(red: 0.31, green: 0.84, blue: 0.42)
     }
 
-    /// The two recessed dot strips on the grille. Upper = preset bank (bank B
-    /// lights the first dot, as the real mic's mode LEDs do); lower = which of
-    /// the four sample slots last fired.
+    /// The two recessed LED strips on the grille. Upper: four red, a bar graph
+    /// of the page (none lit on clean, all four on the last page). Lower: four
+    /// white, one lit for the selected sample slot.
     private func ledStrips(width: CGFloat, height: CGFloat) -> some View {
         // Strip fractions are of the whole art box; convert to grille-local.
         let x = (P.stripLeft - P.bodyX) / P.bodyW * width
@@ -209,22 +198,28 @@ struct FXMicView: View {
         let bTop = P.stripBTop / P.grilleH * height
         let bH = (P.stripBBottom - P.stripBTop) / P.grilleH * height
 
+        let level = max(0, min(Self.stripDots, pageLevel))
         return ZStack(alignment: .topLeading) {
-            strip(width: stripW, height: aH, lit: presetBank == 1 ? 0 : nil)
+            strip(width: stripW, height: aH,
+                  lit: { $0 < level },
+                  on: Color(red: 1.0, green: 0.25, blue: 0.2), glow: .red)
                 .offset(x: x, y: aTop)
-            strip(width: stripW, height: bH, lit: lastSlot)
+            strip(width: stripW, height: bH,
+                  lit: { $0 == lastSlot },
+                  on: Color(white: 0.98), glow: .white)
                 .offset(x: x, y: bTop)
         }
     }
 
-    private func strip(width: CGFloat, height: CGFloat, lit: Int?) -> some View {
+    private func strip(width: CGFloat, height: CGFloat,
+                       lit: @escaping (Int) -> Bool, on: Color, glow: Color) -> some View {
         let dot = min(width * 0.36, height / CGFloat(Self.stripDots + 3))
         return VStack(spacing: 0) {
             ForEach(0..<Self.stripDots, id: \.self) { index in
                 Circle()
-                    .fill(index == lit ? Color(red: 1.0, green: 0.25, blue: 0.2) : Color(white: 0.34))
+                    .fill(lit(index) ? on : Color(white: 0.34))
                     .frame(width: dot, height: dot)
-                    .shadow(color: index == lit ? Color.red.opacity(0.9) : .clear, radius: dot)
+                    .shadow(color: lit(index) ? glow.opacity(0.9) : .clear, radius: dot)
                     .frame(maxHeight: .infinity)
             }
         }
@@ -236,7 +231,7 @@ struct FXMicView: View {
                 .overlay(Capsule().strokeBorder(Color.black.opacity(0.22), lineWidth: 0.9))
                 .shadow(color: .black.opacity(0.35), radius: 1.5, y: 1))
         .animation(.easeOut(duration: 0.1), value: lastSlot)
-        .animation(.easeOut(duration: 0.1), value: presetBank)
+        .animation(.easeOut(duration: 0.1), value: pageLevel)
     }
 
     /// Brushed aluminium plate: the wordmark and four recessed screws.
@@ -338,19 +333,54 @@ struct FXMicView: View {
 
     // MARK: Side buttons
 
-    /// Indicators, not controls. We never see these pressed — only the tone the
-    /// press produces — so they react to a decoded cue rather than to clicks.
+    /// FX1 at the handle's midpoint on the left; FX2–FX4 at each side
+    /// button's midpoint on the right, with a leader out to the label. Same
+    /// `P` fractions as the shapes, so the label is level with the control by
+    /// construction.
+    private func calloutLabels(w: CGFloat, h: CGFloat) -> some View {
+        let gap: CGFloat = 8
+        let leader: CGFloat = 14
+        func label(_ text: String, active: Bool, y: CGFloat, left: Bool) -> some View {
+            HStack(spacing: 4) {
+                if left { Text(text) }
+                Rectangle()
+                    .fill(active ? Color.green : Color.secondary.opacity(0.6))
+                    .frame(width: leader, height: 1)
+                if !left { Text(text) }
+            }
+            .font(.caption.weight(.semibold).monospaced())
+            .foregroundStyle(active ? Color.green : Color.secondary)
+            .frame(width: Self.calloutWidth, height: 18, alignment: left ? .trailing : .leading)
+            .position(x: left ? -(gap + Self.calloutWidth / 2) : w + gap + Self.calloutWidth / 2,
+                      y: y * h)
+            .animation(.easeOut(duration: 0.12), value: active)
+        }
+        return ZStack(alignment: .topLeading) {
+            label(FXMicControlName.handle, active: voiceActive,
+                  y: (P.handleTop + P.handleBottom) / 2, left: true)
+            label(FXMicControlName.fxButton, active: fxPressed,
+                  y: (P.presetTop + P.presetBottom) / 2, left: false)
+            label(FXMicControlName.middleButton, active: selectPressed,
+                  y: (P.slotTop + P.slotBottom) / 2, left: false)
+            label(FXMicControlName.bottomButton, active: playPressed,
+                  y: (P.triggerTop + P.triggerBottom) / 2, left: false)
+        }
+        .frame(width: w, height: h, alignment: .topLeading)
+        .allowsHitTesting(false)
+    }
+
+    /// Indicators, not controls: they depress while the real button is held.
     private func sideButtons(w: CGFloat, h: CGFloat) -> some View {
         ZStack(alignment: .topLeading) {
             sideButton(w: w, h: h, right: P.presetRight,
                        top: P.presetTop, bottom: P.presetBottom,
-                       color: Self.orange, active: presetBank == 1)
+                       color: Self.orange, active: fxPressed)
             sideButton(w: w, h: h, right: P.slotRight,
                        top: P.slotTop, bottom: P.slotBottom,
-                       color: Color(white: 0.82), active: lastSlot != nil)
+                       color: Color(white: 0.82), active: selectPressed)
             sideButton(w: w, h: h, right: P.triggerRight,
                        top: P.triggerTop, bottom: P.triggerBottom,
-                       color: Color(white: 0.78), active: lastSlot != nil)
+                       color: Color(white: 0.78), active: playPressed)
         }
     }
 

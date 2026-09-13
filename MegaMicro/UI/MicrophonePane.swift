@@ -45,35 +45,26 @@ struct MicrophonePane: View {
     /// so the caption below always clears the cable.
     private static let deviceWidth: CGFloat = 250
 
-    /// Width of one label gutter beside the drawing.
-    private static let calloutWidth: CGFloat = 52
-    private static let calloutGap: CGFloat = 10
     private static var deviceHeight: CGFloat { deviceWidth / FXMicView.aspect }
-    private static var artWidth: CGFloat { deviceWidth + 2 * (calloutWidth + calloutGap) }
+    private static var artWidth: CGFloat { deviceWidth + 2 * (FXMicView.calloutWidth + 8) }
 
     private var deviceColumn: some View {
         VStack(spacing: 18) {
-            ZStack {
-                FXMicView(level: level,
-                          clipping: clipping,
-                          presetBank: bank,
-                          lastSlot: slot,
-                          voiceActive: voiceActive)
-                    .frame(width: Self.deviceWidth, height: Self.deviceHeight)
-                    .position(x: Self.artWidth / 2, y: Self.deviceHeight / 2)
-                calloutLeaders
-                ForEach(FXMicView.callouts) { callout in
-                    calloutLabel(callout)
-                        .frame(width: Self.calloutWidth, height: 18)
-                        .position(x: calloutLabelX(callout.side),
-                                  y: callout.yFraction * Self.deviceHeight)
-                }
-            }
-            .frame(width: Self.artWidth, height: Self.deviceHeight)
-            // The cable runs to the very bottom of the art box, so the
-            // caption needs real clearance under it, not just VStack
-            // spacing.
-            .padding(.bottom, 44)
+            FXMicView(level: level,
+                      clipping: clipping,
+                      pageLevel: bank,
+                      lastSlot: slot,
+                      voiceActive: voiceActive,
+                      fxPressed: appState.micLinkButtons.fx,
+                      selectPressed: appState.micLinkButtons.select,
+                      playPressed: appState.micLinkButtons.play,
+                      showCallouts: true)
+                .frame(width: Self.deviceWidth, height: Self.deviceHeight)
+                .padding(.horizontal, FXMicView.calloutWidth + 8)
+                // The cable runs to the very bottom of the art box, so the
+                // caption needs real clearance under it, not just VStack
+                // spacing.
+                .padding(.bottom, 44)
 
             HStack(spacing: 6) {
                 Circle()
@@ -90,56 +81,6 @@ struct MicrophonePane: View {
                 .foregroundStyle(.tertiary)
         }
         .frame(width: Self.artWidth)
-    }
-
-    /// FX1–FX4 beside the drawing, each on a leader line to its control and
-    /// lit while that control is pressed, so "press FX3" and the button under
-    /// your thumb can't disagree. Positioned absolutely: a stack of offsets
-    /// is exactly how a label ends up next to the wrong button.
-    private func calloutLabelX(_ side: FXMicView.Callout.Side) -> CGFloat {
-        side == .left ? Self.calloutWidth / 2
-                      : Self.artWidth - Self.calloutWidth / 2
-    }
-
-    private var calloutLeaders: some View {
-        Canvas { context, _ in
-            for callout in FXMicView.callouts {
-                let y = callout.yFraction * Self.deviceHeight
-                var path = Path()
-                if callout.side == .left {
-                    path.move(to: CGPoint(x: Self.calloutWidth, y: y))
-                    path.addLine(to: CGPoint(x: Self.calloutWidth + Self.calloutGap + 4, y: y))
-                } else {
-                    path.move(to: CGPoint(x: Self.artWidth - Self.calloutWidth, y: y))
-                    path.addLine(to: CGPoint(x: Self.artWidth - Self.calloutWidth - Self.calloutGap - 4, y: y))
-                }
-                let active = calloutActive(callout.label)
-                context.stroke(path, with: .color(active ? .green : Color.secondary.opacity(0.6)),
-                               lineWidth: 1)
-            }
-        }
-        .frame(width: Self.artWidth, height: Self.deviceHeight)
-        .allowsHitTesting(false)
-    }
-
-    private func calloutLabel(_ callout: FXMicView.Callout) -> some View {
-        let active = calloutActive(callout.label)
-        return Text(callout.label)
-            .font(.caption.weight(.semibold).monospaced())
-            .foregroundStyle(active ? Color.green : Color.secondary)
-            .frame(maxWidth: .infinity,
-                   alignment: callout.side == .left ? .trailing : .leading)
-            .animation(.easeOut(duration: 0.12), value: active)
-    }
-
-    private func calloutActive(_ label: String) -> Bool {
-        switch label {
-        case FXMicControlName.handle: return appState.micVoiceActive
-        case FXMicControlName.fxButton: return appState.micLinkButtons.fx
-        case FXMicControlName.middleButton: return appState.micLinkButtons.select
-        case FXMicControlName.bottomButton: return appState.micLinkButtons.play
-        default: return false
-        }
     }
 
     // MARK: Right — everything you can change
@@ -235,36 +176,26 @@ struct MicrophonePane: View {
         }
     }
 
-    // MARK: Sample buttons → actions
+    // MARK: Controls
 
-    @ViewBuilder
-    private var cueSection: some View {
-        if appState.micUSBConnected {
-            usbSection
-        } else {
-            audioFallbackSection
-        }
+    private enum ControlSource { case usb, script, none }
+    private var controlSource: ControlSource {
+        if appState.micUSBConnected { return .usb }
+        if appState.micScriptLastHeard != nil { return .script }
+        return .none
     }
 
-    /// The real thing: buttons, handle and page straight from the firmware.
-    private var usbSection: some View {
+    private var cueSection: some View {
         GroupBox("Mic controls") {
             VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 6) {
-                    Circle().fill(Color.green).frame(width: 7, height: 7)
-                    Text("Connected over USB-C. The buttons, handle and page are read from the mic's firmware directly — nothing is inferred from audio.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                sourceLine
+
                 VStack(alignment: .leading, spacing: 4) {
                     Text("How the four controls work")
                         .font(.caption.weight(.semibold))
                     Text("• \(FXMicControlName.handle), the handle, does the same thing on every page.")
-                    Text("• \(FXMicControlName.fxButton), the small orange button, changes the page. The mic's red dot shows which page you're on.")
+                    Text("• \(FXMicControlName.fxButton), the small orange button, changes the page. The mic's red LEDs count the page.")
                     Text("• \(FXMicControlName.middleButton) and \(FXMicControlName.bottomButton) do whatever the current page says — five pages, so ten mappings between them.")
-                    Text("The mic also switches its own voice effect with the page; each page's effect is named under it.")
-                        .foregroundStyle(.tertiary)
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -281,15 +212,40 @@ struct MicrophonePane: View {
                 pageGrid
                 Divider()
                 diskTweaks
+                if controlSource != .usb {
+                    Divider()
+                    detectorStatus
+                }
             }
             .padding(.vertical, 4)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
-    /// Two files on the mic's own disk that turn it from an effects toy into
-    /// a quiet control surface. Toggles rather than buttons: the state is
-    /// read off the disk, so what's shown is what the mic will boot with.
+    private var sourceLine: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Circle()
+                .fill(controlSource == .none ? Color.secondary.opacity(0.4) : Color.green)
+                .frame(width: 7, height: 7)
+            Group {
+                switch controlSource {
+                case .usb:
+                    Text("Controls arriving over USB-C from the mic's firmware. Handy for setup; for everyday use the audio cable alone is enough once the script is on the mic.")
+                case .script:
+                    Text("Controls arriving over the audio cable — the mic's script chirps a code for every press and MegaMicro decodes it from the line-in. Last heard \(appState.micScriptLastHeard!.formatted(date: .omitted, time: .standard)).")
+                case .none:
+                    Text(appState.micConnected
+                         ? "Listening, but nothing from the mic yet. Squeeze the handle: if the script is installed you'll see the row below flip. If not, install it under \"On the mic's disk\"."
+                         : "Not listening. Press Listen on the mic's line input above.")
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// The one file set that turns the mic into a control surface.
     @State private var diskRefresh = 0
     private var diskTweaks: some View {
         let volume = appState.micDiskVolume()
@@ -299,19 +255,16 @@ struct MicrophonePane: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
             if let volume {
-                Toggle("Clean voice on every page — \(FXMicControlName.fxButton) changes the page, not the sound",
+                Toggle("MegaMicro control script (v\(FXMicScript.version)) — makes every button and the handle speak over the audio cable",
                        isOn: Binding(
-                        get: { FXMicDisk.isApplied(.cleanPages, on: volume) },
-                        set: { appState.setMicDiskTweak(.cleanPages, enabled: $0); diskRefresh += 1 }))
-                Toggle("Silent samples — \(FXMicControlName.bottomButton) runs its mapping without playing a sound",
-                       isOn: Binding(
-                        get: { FXMicDisk.isApplied(.silentSamples, on: volume) },
-                        set: { appState.setMicDiskTweak(.silentSamples, enabled: $0); diskRefresh += 1 }))
-                Text("Changing either ejects the disk so the mic restarts. Turn one off to get the factory behaviour back.")
+                        get: { FXMicDisk.isApplied(.controlScript, on: volume) },
+                        set: { appState.setMicDiskTweak(.controlScript, enabled: $0); diskRefresh += 1 }))
+                Text("Turning it on writes main.py and four chirp samples and ejects the disk; turning it off removes them. Either way, power-cycle the mic afterwards.")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
-                Text("The disk shows up only while the USB-C cable is in and the mic is on; it's ejected after each change. Unplug and replug the cable to bring it back.")
+                Text("To install or remove the script: take off the mic's lower lid, squeeze the handle so it's on, plug its USB-C port into this Mac, and the toggle appears here. Once installed you can unplug USB for good.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -335,7 +288,7 @@ struct MicrophonePane: View {
                 .animation(.easeOut(duration: 0.15), value: down)
             VStack(alignment: .leading, spacing: 1) {
                 Text("\(FXMicControlName.handle) · handle")
-                Text(down ? "squeezed \(Int(appState.micLinkHandle * 100))%" : "released")
+                Text(down ? "squeezed" : "released")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -376,7 +329,7 @@ struct MicrophonePane: View {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(FXMicProtocol.pageLabel(page))
                         .fontWeight(current ? .semibold : .regular)
-                    Text(FXMicProtocol.pageEffect(page))
+                    Text(page == 0 ? "no red LEDs" : "\(page) red LED\(page == 1 ? "" : "s")")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -417,157 +370,19 @@ struct MicrophonePane: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// No USB cable: all we have is the line-in, so the sample buttons are
-    /// decoded as tones and the handle is guessed from the line going live.
-    private var audioFallbackSection: some View {
-        GroupBox("Mic controls") {
-            VStack(alignment: .leading, spacing: 12) {
-                Label {
-                    Text("Plug the mic's USB-C port (under the lower lid) into this Mac and the buttons, handle and page are read directly. Until then MegaMicro can only hear the mic.")
-                        .fixedSize(horizontal: false, vertical: true)
-                } icon: {
-                    Image(systemName: "cable.connector")
-                }
-                .font(.callout)
-                .foregroundStyle(.secondary)
-
-                Text("""
-                Over audio alone: pressing the handle powers the mic, so audio appearing on the \
-                line *is* the handle going down. Each of the four sample slots gets a short \
-                two-tone chirp; when \(FXMicControlName.bottomButton) plays one, the tone is decoded and its \
-                action runs. \(FXMicControlName.middleButton) picks the sample and \(FXMicControlName.fxButton) picks a \
-                voice effect — both silent, so neither can be heard.
-                """)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-                handleRow
-                Divider()
-                ForEach(0..<CueTones.cueCount, id: \.self) { cue in
-                    cueRow(cue)
-                }
-
-                Divider()
-
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Button("Export cue tones…") { appState.exportCueTones() }
-                    Text(AppState.mountedMicDisks().isEmpty
-                         ? "Mic disk not mounted — you'll pick a folder."
-                         : "Mic disk is mounted — the tones go straight onto it.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                if let message = appState.micCueExportMessage {
-                    Text(message)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Text("""
-                To load them: take off the mic's lower lid, press the handle so it's on, and \
-                plug the USB-C port under the lid into the Mac. A disk named "fx-mic disk" \
-                appears; the tones replace 1.wav–4.wav in its root. Eject it and the mic \
-                restarts with the new sounds. The factory horn, applause, bell and censor \
-                beep are overwritten — save them first if you want them back.
-                """)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-                Divider()
-                detectorStatus
-            }
-            .padding(.vertical, 4)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    private var handleRow: some View {
-        let action = appState.action(for: FXMicLayout.handle, gesture: .press)
-        let down = appState.micVoiceActive
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 12) {
-                Circle()
-                    .fill(down ? Color.green : Color.secondary.opacity(0.35))
-                    .frame(width: 8, height: 8)
-                    .animation(.easeOut(duration: 0.15), value: down)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Handle")
-                    Text(down ? "down" : "up")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(width: 110, alignment: .leading)
-                Text(action == .none ? "Nothing" : action.summary)
-                    .font(.body.monospaced())
-                    .foregroundStyle(action == .none ? .secondary : .primary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Spacer(minLength: 12)
-                Button("Edit…") { appState.editHandle() }
-            }
-            HStack(spacing: 10) {
-                Text("Sensitivity")
-                    .font(.caption)
-                    .frame(width: 110, alignment: .leading)
-                Slider(value: Binding(
-                    get: { appState.config.micHandleThresholdDB },
-                    set: { appState.setMicHandleThreshold($0) }), in: -90 ... -10)
-                Text("\(Int(appState.config.micHandleThresholdDB)) dB")
-                    .font(.caption.monospaced())
-                    .frame(width: 52, alignment: .trailing)
-            }
-            Text(appState.micConnected
-                 ? "Line is at \(Int(appState.micLevelDB)) dB now. Handle counts as down above the threshold; it lets go after 0.8 s of quiet. Set it just above what you see with the handle released."
-                 : "Handle counts as down when the line rises above the threshold; it lets go after 0.8 s of quiet.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private func cueRow(_ cue: Int) -> some View {
-        let (low, high) = CueTones.frequencies(for: cue)
-        let action = appState.action(for: FXMicLayout.cue(cue), gesture: .press)
-        let lit = appState.micLastSlot == cue
-        return HStack(spacing: 12) {
-            Circle()
-                .fill(lit ? Color.green : Color.secondary.opacity(0.35))
-                .frame(width: 8, height: 8)
-                .animation(.easeOut(duration: 0.15), value: lit)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(CueTones.label(cue))
-                Text("\(Int(low)) + \(Int(high)) Hz")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .frame(width: 110, alignment: .leading)
-            Text(action == .none ? "Nothing" : action.summary)
-                .font(.body.monospaced())
-                .foregroundStyle(action == .none ? .secondary : .primary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            Spacer(minLength: 12)
-            Button("Test") { appState.fireCue(cue) }
-                .disabled(action == .none)
-            Button("Edit…") { appState.editCue(cue) }
-        }
-    }
-
-    /// One line on what the decoder hears, so a tone that's loaded wrong (or a
-    /// level that's too low) is visible without opening the log.
+    /// One line on what the chirp decoder hears, so a mis-set level or a
+    /// missing script is visible without opening the log.
     private var detectorStatus: some View {
         VStack(alignment: .leading, spacing: 3) {
             if !appState.micConnected {
-                Text("Detector idle — not listening.")
+                Text("Chirp decoder idle — not listening.")
             } else if let reading = appState.micToneReading {
-                Text("Hearing \(CueTones.label(reading.cue)) at \(Int(reading.purity * 100))% purity\(reading.purity >= ToneDetector.minPairPurity ? "" : " — below the \(Int(ToneDetector.minPairPurity * 100))% it takes to fire")")
+                Text("Hearing symbol \(reading.cue) at \(Int(reading.purity * 100))% purity\(reading.purity >= ToneDetector.minPairPurity ? "" : " — below the \(Int(ToneDetector.minPairPurity * 100))% it takes to count")")
             } else {
-                Text("Detector listening — no cue tone in the input.")
+                Text("Chirp decoder listening — nothing in the input right now.")
             }
             if let last = appState.micLastCueSummary {
-                Text("Last fired: \(last)")
+                Text("Last symbol: \(last)")
             }
         }
         .font(.caption)
@@ -617,9 +432,8 @@ struct MicrophonePane: View {
                         Slider(value: $previewLevel, in: 0...1)
                     }
                     Toggle("Clipping", isOn: $previewClipping)
-                    Picker("Bank", selection: $previewBank) {
-                        Text("A").tag(0)
-                        Text("B").tag(1)
+                    Picker("Page", selection: $previewBank) {
+                        ForEach(0..<FXMicProtocol.pageCount, id: \.self) { Text("\($0 + 1)").tag($0) }
                     }
                     .pickerStyle(.segmented)
                     .frame(maxWidth: 240)

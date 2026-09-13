@@ -97,8 +97,9 @@ enum FXMicProtocol {
 
     // MARK: The agent
 
-    /// Pasted through the raw REPL. Wraps whatever callback the firmware
-    /// registered (kept in `_mm_orig` so a reinstall never chains two hooks),
+    /// Pasted through the raw REPL. Wraps the mic's control script hook if
+    /// `FXMicScript` is installed, else the firmware's own callback (kept in
+    /// `_mm_orig` so a reinstall never chains two hooks),
     /// samples the inputs each tick, and prints a line on change. Errors
     /// inside the hook are swallowed so a bug here can never take the mic's
     /// own button handling down with it.
@@ -107,7 +108,7 @@ enum FXMicProtocol {
     try:
         _mm_orig
     except NameError:
-        _mm_orig = teenage.python_callback
+        _mm_orig = getattr(teenage, 'mm_hook', teenage.python_callback)
     _mm_state = [None]
     def _mm_hook(*a, **k):
         try:
