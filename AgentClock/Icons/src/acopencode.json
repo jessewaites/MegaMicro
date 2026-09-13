@@ -1,0 +1,6 @@
+{
+  "_comment": "OpenCode. Brackets — no logo detail survives, so lean on the shape the name suggests.",
+  "palette": { ".": "#000000", "w": "#E8E8E8" },
+  "delayMs": 140,
+  "frames": [["........", ".ww.ww..", ".w...w..", ".w...w..", ".w...w..", ".w...w..", ".ww.ww..", "........"]]
+}

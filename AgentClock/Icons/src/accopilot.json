@@ -1,0 +1,6 @@
+{
+  "_comment": "GitHub Copilot. The goggles — the only part of the mark that survives at 8px.",
+  "palette": { ".": "#000000", "w": "#E8E8E8" },
+  "delayMs": 140,
+  "frames": [["........", "..www...", ".wwwww..", "ww...ww.", "ww...ww.", ".wwwww..", "..www...", "........"]]
+}

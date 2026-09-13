@@ -1,0 +1,15 @@
+{
+  "_comment": "Codex. A shell prompt — which is, near enough, the logo. The blob and the OpenAI knot were both tried and both failed the same way: judged magnified they looked like they had structure, but at 8 actual pixels they read as scattered dots. A chevron and an underscore survive because they are two strokes, not a texture. The chevron starts on column 1, the same column the underscore starts on, so the two read as one prompt rather than two marks that happen to be near each other. Codex blue #011299 is the resting colour; the renderer tints the whole mark by state, because a mark with no enclosed holes has no eyes to carry it.",
+  "palette": { ".": "#000000", "c": "#011299" },
+  "delayMs": 140,
+  "frames": [[
+    "........",
+    ".cc.....",
+    "..cc....",
+    "...cc...",
+    "..cc....",
+    ".cc.....",
+    "........",
+    ".ccccc.."
+  ]]
+}

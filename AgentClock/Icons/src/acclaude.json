@@ -1,0 +1,20 @@
+{
+  "_comment": "Claude Code. Traced from icons/claudecode-color.svg at 13x8 \u2014 the mark is already pixel art on a 24-unit grid, so it reduces without a fight, which the old radial burst never did. At this size the eyes, side arms and four legs all survive. Wider than tall on purpose: 32x8 has width to spare and no height, so a 13x8 mark uses the panel's actual shape. Brand orange #D97757.",
+  "palette": {
+    ".": "#000000",
+    "o": "#D97757"
+  },
+  "delayMs": 140,
+  "frames": [
+    [
+      "..ooooooo..",
+      "..ooooooo..",
+      "..o.ooo.o..",
+      "ooooooooooo",
+      "ooooooooooo",
+      "..ooooooo..",
+      "..ooooooo..",
+      "..o.o.o.o.."
+    ]
+  ]
+}

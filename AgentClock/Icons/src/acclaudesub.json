@@ -1,0 +1,11 @@
+{
+  "_comment": "A subagent: the same creature at 5x4, which is the smallest size that keeps the arms (row 2 reaching full width) and the legs. Drawn white so the renderer can tint it per subagent state — the shape says what it is, the colour says what it is doing.",
+  "palette": { ".": "#000000", "o": "#FFFFFF" },
+  "delayMs": 140,
+  "frames": [[
+    ".ooo.",
+    "ooooo",
+    "ooooo",
+    ".o.o."
+  ]]
+}

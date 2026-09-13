@@ -1,0 +1,87 @@
+name: AgentClock
+options:
+  bundleIdPrefix: com.jessewaites
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    SWIFT_STRICT_CONCURRENCY: targeted
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: BE7XL423KU
+
+targets:
+  # The hook shim every agent CLI spawns. A separate binary rather than a
+  # subcommand of the app: hooks must run even with AgentClock quit, must
+  # cost milliseconds, and must never keep an agent waiting.
+  AgentClockBridge:
+    type: tool
+    platform: macOS
+    sources:
+      - AgentClockBridge
+    settings:
+      base:
+        PRODUCT_NAME: AgentClockBridge
+        ENABLE_HARDENED_RUNTIME: YES
+
+  AgentClock:
+    type: application
+    platform: macOS
+    sources:
+      - AgentClock
+      - path: Assets
+        buildPhase: resources
+      - path: Icons/build
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jessewaites.agentclock
+        CODE_SIGN_ENTITLEMENTS: AgentClock/AgentClock.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+        ENABLE_APP_SANDBOX: NO
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    # A hand-written Info.plist rather than GENERATE_INFOPLIST_FILE: the
+    # Bonjour keys below have no INFOPLIST_KEY_ equivalent, and without
+    # NSBonjourServices macOS returns an empty browse rather than an error —
+    # which looks exactly like "no clock on the network".
+    info:
+      path: AgentClock/Info.plist
+      properties:
+        CFBundleDisplayName: AgentClock
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        LSMinimumSystemVersion: "14.0"
+        NSHumanReadableCopyright: "© 2026 Jesse Waites"
+        NSBonjourServices:
+          - _awtrixng._tcp
+        NSLocalNetworkUsageDescription: "AgentClock finds your AWTRIX pixel clock on the local network and sends it your agents' status."
+        NSCameraUsageDescription: "Camera Lab turns live camera frames into a local 32×8 pixel preview and can stream them to your AWTRIX display. Frames are not saved or uploaded."
+    dependencies:
+      - target: AgentClockBridge
+
+  AgentClockTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - AgentClockTests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: AgentClock
+
+schemes:
+  AgentClock:
+    build:
+      targets:
+        AgentClock: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - AgentClockTests

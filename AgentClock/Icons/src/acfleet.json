@@ -1,0 +1,6 @@
+{
+  "_comment": "The fleet page. Neutral grey on purpose: that page paints one state-coloured pixel per agent along the bottom row, and a coloured mark would fight it.",
+  "palette": { ".": "#000000", "w": "#9AA0A6" },
+  "delayMs": 140,
+  "frames": [["........", ".ww.ww..", ".ww.ww..", "........", "........", ".ww.ww..", ".ww.ww..", "........"]]
+}

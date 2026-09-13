@@ -1,0 +1,7 @@
+*.xcodeproj
+.DS_Store
+build/
+DerivedData/
+
+# Icon preview is a dev aid, not a build product.
+Icons/preview.png

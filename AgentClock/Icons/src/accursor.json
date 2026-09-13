@@ -1,0 +1,6 @@
+{
+  "_comment": "Cursor. A pointer rather than the prism logo: the prism is three near-identical greys that collapse to one at this size.",
+  "palette": { ".": "#000000", "w": "#E8E8E8" },
+  "delayMs": 140,
+  "frames": [["w.......", "ww......", "www.....", "wwww....", "wwwww...", "wwwwww..", "www.ww..", "w....w.."]]
+}

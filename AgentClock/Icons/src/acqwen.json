@@ -1,0 +1,6 @@
+{
+  "_comment": "Qwen. A solid diamond — convex where Gemini's sparkle is concave, and purple where it is blue.",
+  "palette": { ".": "#000000", "p": "#A176F0" },
+  "delayMs": 140,
+  "frames": [["...p....", "..ppp...", ".ppppp..", "ppppppp.", ".ppppp..", "..ppp...", "...p....", "........"]]
+}

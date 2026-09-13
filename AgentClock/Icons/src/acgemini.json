@@ -1,0 +1,6 @@
+{
+  "_comment": "Gemini / Antigravity. The four-point sparkle, concave so it stays distinct from Qwen's solid diamond.",
+  "palette": { ".": "#000000", "b": "#4796E3" },
+  "delayMs": 140,
+  "frames": [["...b....", "...b....", "..bbb...", "bbbbbbb.", "..bbb...", "...b....", "...b....", "........"]]
+}

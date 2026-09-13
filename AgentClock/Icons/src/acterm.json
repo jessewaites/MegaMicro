@@ -1,0 +1,6 @@
+{
+  "_comment": "Fallback for any agent without a mark: a shell prompt.",
+  "palette": { ".": "#000000", "g": "#7FE08A" },
+  "delayMs": 140,
+  "frames": [["........", "gg......", "..gg....", "....gg..", "..gg....", "gg......", "........", "..ggggg."]]
+}
