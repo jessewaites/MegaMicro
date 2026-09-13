@@ -116,33 +116,24 @@ Qwen, and the other supported providers can report from any supported terminal.
 
 ## Microphone support: Teenage Engineering EP–2350 FX–MIC
 
-MegaMicro supports the **Teenage Engineering EP–2350** (marketed as FX–MIC, originally as "ting")
-as a second device, running at the same time as the keyboard. Inspired by
-[tajchert/tink-agent](https://github.com/tajchert/tink-agent), which pioneered this approach.
+MegaMicro turns the **Teenage Engineering EP–2350** (marketed as FX–MIC, originally as "ting")
+into a second control surface that runs alongside the keyboard. Inspired by
+[tajchert/tink-agent](https://github.com/tajchert/tink-agent).
 
-### The constraint that shapes everything
+The mic's buttons send nothing to the host, so MegaMicro puts a small script on the mic's own
+disk. At power-on the mic runs it; from then on every press of the handle or the buttons plays a
+short chirp code out the line jack, and MegaMicro decodes the chirps from the audio input. In use
+the only cable is the 3.5 mm audio lead into a USB audio adapter with a line-in jack, and the mic
+runs on two AAA batteries.
 
-**The mic has no data channel to the Mac.** Its USB-C port is mass storage and power only — it
-mounts as a disk and exposes no HID, no USB audio, no MIDI, and no serial interface. Audio leaves
-over the attached 3.5 mm cable as a **stereo TRS line-out** at 2 VRMS / 8 dBu. The handle, the
-three buttons, and the shake sensor report nothing to the host.
+- **FX1**, the handle, does one thing on every page — by default it holds ⌘Z while squeezed,
+  for push-to-talk dictation.
+- **FX2**, the small orange button, steps through five pages; the mic's red LEDs count them.
+- **FX3** and **FX4** do whatever the current page says: ten mappings, all editable.
 
-Two consequences follow:
-
-- **A Mac's own headphone jack will not work as the input.** It is a combo jack that only enables
-  its microphone side for a four-conductor TRRS headset plug; a three-conductor TRS plug is
-  classified as headphones, so macOS routes audio *out* to it and opens no input. The mic also
-  runs at line level, roughly 40 dB hotter than a Mac headset input expects. A **USB audio adapter
-  with a separate mic input** — the classic two-port "sound card" dongle — is what actually
-  enumerates to macOS as an input device.
-- **Button presses have to arrive as audio.** The intended approach is to load the mic's four
-  sample slots with pure cue tones and decode them out of the same stream the voice arrives on.
-
-### Running alongside the keyboard
-
-There is no contention to manage. The keyboard is IOKit HID and the mic is CoreAudio, so the mic
-gets its own slot in application state, entirely separate from the keyboard's. Both stay connected
-regardless of which tab **Manage Devices** happens to be showing.
+Setup is a one-time, five-minute job with a guided sheet in **Manage Devices › Microphone**. The
+full story — the chirp code, the firmware facts, the wiring gotchas, and how to undo it — is in
+[docs/FX-MIC.md](docs/FX-MIC.md).
 
 ### Keeping sound on your speakers
 
@@ -152,15 +143,6 @@ debounced so it stands down rather than fighting another app for control.
 
 It never touches the default *input*: MegaMicro opens the mic by device id, so the mic never has
 to become your system microphone and other applications keep whatever they were already using.
-
-### The on-screen reconstruction
-
-The mic is drawn as pure vector shapes, the same way the keyboard is — no bitmap. Because the
-device cannot report anything, the drawing *is* the diagnostic: the perforated grille lights from
-the bottom with the input level (green through the working range, amber near the top, red on
-clip), the recessed LED strips show the cue bank and last-fired slot, and the handle leans in
-while there is voice. A preview mode drives all of it by hand, so the device can be set up and
-inspected before any hardware is attached.
 
 ## Companion apps
 
